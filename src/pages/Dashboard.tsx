@@ -30,6 +30,38 @@ export default function Dashboard() {
 
   if (!data) return null;
 
+  const calculateTotalBalance = () => {
+    let total = 0;
+    
+    data.accounts.forEach(account => {
+      let accountBalance = account.initialBalance;
+      
+      // Add received revenues
+      data.revenues
+        .filter(r => r.accountId === account.id && r.status === "Recebido")
+        .forEach(r => accountBalance += r.amount);
+      
+      // Subtract paid expenses
+      data.expenses
+        .filter(e => e.accountId === account.id && e.status === "Pago")
+        .forEach(e => accountBalance -= e.amount);
+      
+      // Subtract outgoing transfers
+      data.transfers
+        .filter(t => t.fromAccountId === account.id)
+        .forEach(t => accountBalance -= t.amount);
+      
+      // Add incoming transfers
+      data.transfers
+        .filter(t => t.toAccountId === account.id)
+        .forEach(t => accountBalance += t.amount);
+      
+      total += accountBalance;
+    });
+    
+    return total;
+  };
+
   const totalRevenue = data.revenues
     .filter(r => r.status === "Recebido")
     .reduce((sum, r) => sum + r.amount, 0);
@@ -38,7 +70,7 @@ export default function Dashboard() {
     .filter(e => e.status === "Pago")
     .reduce((sum, e) => sum + e.amount, 0);
   
-  const balance = totalRevenue - totalExpense + data.settings.initialBalance;
+  const balance = calculateTotalBalance();
 
   const pendingRevenue = data.revenues
     .filter(r => r.status === "Em aberto")

@@ -1,4 +1,4 @@
-import { LayoutDashboard, TrendingUp, TrendingDown, Tag, Settings, FileSpreadsheet, Calculator } from "lucide-react";
+import { LayoutDashboard, TrendingUp, TrendingDown, Wallet, Tag, Settings, FileSpreadsheet, Calculator } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
   Sidebar,
@@ -16,6 +16,7 @@ const menuItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Receitas", url: "/receitas", icon: TrendingUp },
   { title: "Despesas", url: "/despesas", icon: TrendingDown },
+  { title: "Contas", url: "/contas", icon: Wallet },
   { title: "Projeção de Caixa", url: "/projecao-caixa", icon: Calculator },
   { title: "Categorias", url: "/categorias", icon: Tag },
   { title: "Relatórios", url: "/relatorios", icon: FileSpreadsheet },

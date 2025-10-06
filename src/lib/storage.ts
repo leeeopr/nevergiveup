@@ -1,6 +1,13 @@
-import { FinancialData, Transaction, Category } from "@/types/financial";
+import { FinancialData, Transaction, Category, Account, Transfer } from "@/types/financial";
 
 const STORAGE_KEY = "financial_data";
+
+const defaultAccounts: Account[] = [
+  { id: "1", name: "Conta Principal", initialBalance: 0, color: "hsl(217, 91%, 60%)" },
+  { id: "2", name: "Poupança", initialBalance: 0, color: "hsl(142, 71%, 45%)" },
+  { id: "3", name: "Conta PJ", initialBalance: 0, color: "hsl(38, 92%, 50%)" },
+  { id: "4", name: "Reserva", initialBalance: 0, color: "hsl(271, 76%, 53%)" },
+];
 
 const defaultCategories: Category[] = [
   { id: "1", type: "Receita", name: "Vendas", description: "Receita de vendas de produtos/serviços" },
@@ -14,13 +21,14 @@ const defaultCategories: Category[] = [
 ];
 
 const defaultData: FinancialData = {
+  accounts: defaultAccounts,
   revenues: [],
   expenses: [],
+  transfers: [],
   categories: defaultCategories,
   settings: {
     notificationEmail: "",
     startDate: new Date().toISOString().split('T')[0],
-    initialBalance: 0,
   },
 };
 
@@ -28,7 +36,28 @@ export const loadFinancialData = (): FinancialData => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return defaultData;
-    return JSON.parse(stored);
+    const data = JSON.parse(stored);
+    
+    // Migração: adicionar accounts e transfers se não existirem
+    if (!data.accounts) data.accounts = defaultAccounts;
+    if (!data.transfers) data.transfers = [];
+    
+    // Migração: adicionar accountId às transações antigas
+    if (data.revenues?.length > 0 && !data.revenues[0].accountId) {
+      data.revenues.forEach((r: Transaction) => r.accountId = data.accounts[0].id);
+    }
+    if (data.expenses?.length > 0 && !data.expenses[0].accountId) {
+      data.expenses.forEach((e: Transaction) => e.accountId = data.accounts[0].id);
+    }
+    
+    // Migração: transferir initialBalance das settings para a primeira conta
+    if (data.settings?.initialBalance && data.accounts[0].initialBalance === 0) {
+      data.accounts[0].initialBalance = data.settings.initialBalance;
+      delete data.settings.initialBalance;
+      saveFinancialData(data);
+    }
+    
+    return data;
   } catch (error) {
     console.error("Error loading financial data:", error);
     return defaultData;
@@ -82,5 +111,47 @@ export const deleteRevenue = (id: string): void => {
 export const deleteExpense = (id: string): void => {
   const data = loadFinancialData();
   data.expenses = data.expenses.filter(e => e.id !== id);
+  saveFinancialData(data);
+};
+
+export const addAccount = (account: Account): void => {
+  const data = loadFinancialData();
+  data.accounts.push(account);
+  saveFinancialData(data);
+};
+
+export const updateAccount = (id: string, account: Account): void => {
+  const data = loadFinancialData();
+  const index = data.accounts.findIndex(a => a.id === id);
+  if (index !== -1) {
+    data.accounts[index] = account;
+    saveFinancialData(data);
+  }
+};
+
+export const deleteAccount = (id: string): void => {
+  const data = loadFinancialData();
+  data.accounts = data.accounts.filter(a => a.id !== id);
+  saveFinancialData(data);
+};
+
+export const addTransfer = (transfer: Transfer): void => {
+  const data = loadFinancialData();
+  data.transfers.push(transfer);
+  saveFinancialData(data);
+};
+
+export const updateTransfer = (id: string, transfer: Transfer): void => {
+  const data = loadFinancialData();
+  const index = data.transfers.findIndex(t => t.id === id);
+  if (index !== -1) {
+    data.transfers[index] = transfer;
+    saveFinancialData(data);
+  }
+};
+
+export const deleteTransfer = (id: string): void => {
+  const data = loadFinancialData();
+  data.transfers = data.transfers.filter(t => t.id !== id);
   saveFinancialData(data);
 };
