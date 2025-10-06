@@ -68,20 +68,6 @@ export default function Configuracoes() {
           </p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="initialBalance">Saldo Inicial (R$)</Label>
-          <Input
-            id="initialBalance"
-            type="number"
-            step="0.01"
-            value={settings.initialBalance}
-            onChange={(e) => setSettings({ ...settings, initialBalance: parseFloat(e.target.value) })}
-          />
-          <p className="text-xs text-muted-foreground">
-            Saldo em caixa no início das operações
-          </p>
-        </div>
-
         <Button onClick={handleSave} className="w-full gap-2">
           <Save className="h-4 w-4" />
           Salvar Configurações

@@ -5,20 +5,21 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { loadFinancialData } from "@/lib/storage";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 
 interface DailyTransaction {
   date: string;
   description: string;
   amount: number;
-  type: "income" | "expense";
+  type: "income" | "expense" | "transfer";
   category: string;
   clientOrSupplier: string;
+  accountId: string;
 }
 
 interface DailyBalance {
   date: string;
-  balance: number;
+  balances: { [accountId: string]: number };
   transactions: DailyTransaction[];
 }
 
@@ -29,6 +30,7 @@ export default function ProjecaoCaixa() {
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterAccount, setFilterAccount] = useState<string>("all");
 
   // Expand transactions with installments into individual daily transactions
   const expandedTransactions = useMemo(() => {
@@ -44,6 +46,7 @@ export default function ProjecaoCaixa() {
           type: "income",
           category: rev.category,
           clientOrSupplier: rev.clientOrSupplier,
+          accountId: rev.accountId,
         });
       } else {
         const installmentAmount = rev.amount / rev.installments;
@@ -58,6 +61,7 @@ export default function ProjecaoCaixa() {
             type: "income",
             category: rev.category,
             clientOrSupplier: rev.clientOrSupplier,
+            accountId: rev.accountId,
           });
         }
       }
@@ -73,6 +77,7 @@ export default function ProjecaoCaixa() {
           type: "expense",
           category: exp.category,
           clientOrSupplier: exp.clientOrSupplier,
+          accountId: exp.accountId,
         });
       } else {
         const installmentAmount = exp.amount / exp.installments;
@@ -87,23 +92,43 @@ export default function ProjecaoCaixa() {
             type: "expense",
             category: exp.category,
             clientOrSupplier: exp.clientOrSupplier,
+            accountId: exp.accountId,
           });
         }
       }
     });
 
-    return expanded.sort((a, b) => a.date.localeCompare(b.date));
-  }, [data.revenues, data.expenses]);
+    // Process transfers
+    data.transfers.forEach(transfer => {
+      expanded.push({
+        date: transfer.date,
+        description: `Transferência: ${transfer.description}`,
+        amount: transfer.amount,
+        type: "transfer",
+        category: "Transferência",
+        clientOrSupplier: "",
+        accountId: transfer.fromAccountId,
+      });
+    });
 
-  // Calculate daily balances
+    return expanded.sort((a, b) => a.date.localeCompare(b.date));
+  }, [data.revenues, data.expenses, data.transfers]);
+
+  // Calculate daily balances for all accounts
   const dailyBalances = useMemo(() => {
     const balances: DailyBalance[] = [];
-    let runningBalance = data.settings.initialBalance;
+    const runningBalances: { [accountId: string]: number } = {};
+    
+    // Initialize with initial balances
+    data.accounts.forEach(acc => {
+      runningBalances[acc.id] = acc.initialBalance;
+    });
 
     const filteredTransactions = expandedTransactions.filter(t => {
       const matchesDate = t.date >= startDate && t.date <= endDate;
       const matchesCategory = filterCategory === "all" || t.category === filterCategory;
-      return matchesDate && matchesCategory;
+      const matchesAccount = filterAccount === "all" || t.accountId === filterAccount;
+      return matchesDate && matchesCategory && matchesAccount;
     });
 
     // Group transactions by date
@@ -123,25 +148,38 @@ export default function ProjecaoCaixa() {
       
       dayTransactions.forEach(t => {
         if (t.type === "income") {
-          runningBalance += t.amount;
-        } else {
-          runningBalance -= t.amount;
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
+        } else if (t.type === "expense") {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+        } else if (t.type === "transfer") {
+          const transfer = data.transfers.find(tr => 
+            tr.date === t.date && tr.description === t.description.replace("Transferência: ", "")
+          );
+          if (transfer) {
+            runningBalances[transfer.fromAccountId] = (runningBalances[transfer.fromAccountId] || 0) - transfer.amount;
+            runningBalances[transfer.toAccountId] = (runningBalances[transfer.toAccountId] || 0) + transfer.amount;
+          }
         }
       });
 
       balances.push({
         date,
-        balance: runningBalance,
+        balances: { ...runningBalances },
         transactions: dayTransactions,
       });
     });
 
     return balances;
-  }, [expandedTransactions, startDate, endDate, filterCategory, data.settings.initialBalance]);
+  }, [expandedTransactions, startDate, endDate, filterCategory, filterAccount, data.accounts, data.transfers]);
 
-  // Analyze expense coverage
+  // Analyze expense coverage per account
   const expenseCoverage = useMemo(() => {
-    let runningBalance = data.settings.initialBalance;
+    const runningBalances: { [accountId: string]: number } = {};
+    
+    // Initialize with initial balances
+    data.accounts.forEach(acc => {
+      runningBalances[acc.id] = acc.initialBalance;
+    });
     const analysis: Array<{
       date: string;
       expense: string;
@@ -151,17 +189,19 @@ export default function ProjecaoCaixa() {
       status: "safe" | "warning" | "risk";
       category: string;
       supplier: string;
+      accountId: string;
     }> = [];
 
     const allTransactions = expandedTransactions.filter(t => {
       const matchesDate = t.date >= startDate && t.date <= endDate;
       const matchesCategory = filterCategory === "all" || t.category === filterCategory;
-      return matchesDate && matchesCategory;
+      const matchesAccount = filterAccount === "all" || t.accountId === filterAccount;
+      return matchesDate && matchesCategory && matchesAccount;
     });
 
     allTransactions.forEach(t => {
       if (t.type === "expense") {
-        const balanceBefore = runningBalance;
+        const balanceBefore = runningBalances[t.accountId] || 0;
         const balanceAfter = balanceBefore - t.amount;
         
         let status: "safe" | "warning" | "risk";
@@ -182,25 +222,52 @@ export default function ProjecaoCaixa() {
           status,
           category: t.category,
           supplier: t.clientOrSupplier,
+          accountId: t.accountId,
         });
       }
 
       // Update running balance
       if (t.type === "income") {
-        runningBalance += t.amount;
-      } else {
-        runningBalance -= t.amount;
+        runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
+      } else if (t.type === "expense") {
+        runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+      } else if (t.type === "transfer") {
+        const transfer = data.transfers.find(tr => 
+          tr.date === t.date && tr.description === t.description.replace("Transferência: ", "")
+        );
+        if (transfer) {
+          runningBalances[transfer.fromAccountId] = (runningBalances[transfer.fromAccountId] || 0) - transfer.amount;
+          runningBalances[transfer.toAccountId] = (runningBalances[transfer.toAccountId] || 0) + transfer.amount;
+        }
       }
     });
 
     return analysis;
-  }, [expandedTransactions, startDate, endDate, filterCategory, data.settings.initialBalance]);
+  }, [expandedTransactions, startDate, endDate, filterCategory, filterAccount, data.accounts, data.transfers]);
 
   // Chart data
-  const chartData = dailyBalances.map(db => ({
-    date: new Date(db.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-    balance: db.balance,
-  }));
+  const chartData = dailyBalances.map(db => {
+    const dataPoint: any = {
+      date: new Date(db.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+    };
+    
+    // Add balance for each account or total
+    if (filterAccount === "all") {
+      let total = 0;
+      data.accounts.forEach(acc => {
+        total += db.balances[acc.id] || 0;
+      });
+      dataPoint.total = total;
+    } else {
+      data.accounts.forEach(acc => {
+        if (filterAccount === "all" || filterAccount === acc.id) {
+          dataPoint[acc.name] = db.balances[acc.id] || 0;
+        }
+      });
+    }
+    
+    return dataPoint;
+  });
 
   const allCategories = Array.from(new Set([
     ...data.categories.map(c => c.name)

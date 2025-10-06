@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Receitas from "./pages/Receitas";
 import Despesas from "./pages/Despesas";
+import Contas from "./pages/Contas";
 import ProjecaoCaixa from "./pages/ProjecaoCaixa";
 import Categorias from "./pages/Categorias";
 import Relatorios from "./pages/Relatorios";
@@ -35,6 +36,7 @@ const App = () => (
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/receitas" element={<Receitas />} />
                 <Route path="/despesas" element={<Despesas />} />
+                <Route path="/contas" element={<Contas />} />
                 <Route path="/projecao-caixa" element={<ProjecaoCaixa />} />
                 <Route path="/categorias" element={<Categorias />} />
                 <Route path="/relatorios" element={<Relatorios />} />

@@ -14,6 +14,7 @@ export default function Despesas() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Transaction | null>(null);
   const [formData, setFormData] = useState<Partial<Transaction>>({
+    accountId: "",
     date: new Date().toISOString().split('T')[0],
     description: "",
     category: "",
@@ -29,13 +30,14 @@ export default function Despesas() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.description || !formData.category || formData.amount === 0) {
+    if (!formData.description || !formData.category || !formData.accountId || formData.amount === 0) {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
 
     const expense: Transaction = {
       id: editingExpense?.id || `exp_${Date.now()}`,
+      accountId: formData.accountId!,
       date: formData.date!,
       description: formData.description!,
       category: formData.category!,
@@ -76,6 +78,7 @@ export default function Despesas() {
 
   const resetForm = () => {
     setFormData({
+      accountId: data.accounts[0]?.id || "",
       date: new Date().toISOString().split('T')[0],
       description: "",
       category: "",
@@ -120,6 +123,23 @@ export default function Despesas() {
               <DialogTitle>{editingExpense ? "Editar Despesa" : "Nova Despesa"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="account">Conta</Label>
+                <Select
+                  value={formData.accountId}
+                  onValueChange={(value) => setFormData({ ...formData, accountId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {data.accounts.map(acc => (
+                      <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="date">Data</Label>
@@ -261,6 +281,7 @@ export default function Despesas() {
                 <th className="p-4 text-left text-sm font-medium">Data</th>
                 <th className="p-4 text-left text-sm font-medium">Descrição</th>
                 <th className="p-4 text-left text-sm font-medium">Categoria</th>
+                <th className="p-4 text-left text-sm font-medium">Conta</th>
                 <th className="p-4 text-left text-sm font-medium">Fornecedor</th>
                 <th className="p-4 text-left text-sm font-medium">Valor</th>
                 <th className="p-4 text-left text-sm font-medium">Status</th>
@@ -268,17 +289,24 @@ export default function Despesas() {
               </tr>
             </thead>
             <tbody>
-              {[...data.expenses]
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-              .map((expense) => (
-
-                <tr key={expense.id} className="border-b hover:bg-muted/30 transition-colors">
-                  <td className="p-4 text-sm">
-                    {new Date(expense.date).toLocaleDateString('pt-BR')}
-                  </td>
-                  <td className="p-4 text-sm">{expense.description}</td>
-                  <td className="p-4 text-sm">{expense.category}</td>
-                  <td className="p-4 text-sm">{expense.clientOrSupplier}</td>
+{[...data.expenses]
+  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  .map((expense) => {
+    const account = data.accounts.find(a => a.id === expense.accountId);
+    return (
+      <tr key={expense.id} className="border-b hover:bg-muted/30 transition-colors">
+        <td className="p-4 text-sm">
+          {new Date(expense.date).toLocaleDateString('pt-BR')}
+        </td>
+        <td className="p-4 text-sm">{expense.description}</td>
+        <td className="p-4 text-sm">{expense.category}</td>
+        <td className="p-4 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded" style={{ backgroundColor: account?.color }}></div>
+            {account?.name}
+          </div>
+        </td>
+        <td className="p-4 text-sm">{expense.clientOrSupplier}</td>
                   <td className="p-4 text-sm font-medium">
                     R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
@@ -308,9 +336,10 @@ export default function Despesas() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
