@@ -268,7 +268,9 @@ export default function Receitas() {
               </tr>
             </thead>
             <tbody>
-              {data.revenues.map((revenue) => (
+              {[...data.revenues]
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                .map((revenue) => (
                 <tr key={revenue.id} className="border-b hover:bg-muted/30 transition-colors">
                   <td className="p-4 text-sm">
                     {new Date(revenue.date).toLocaleDateString('pt-BR')}

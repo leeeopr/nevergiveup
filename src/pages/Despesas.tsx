@@ -268,7 +268,10 @@ export default function Despesas() {
               </tr>
             </thead>
             <tbody>
-              {data.expenses.map((expense) => (
+              {[...data.expenses]
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .map((expense) => (
+
                 <tr key={expense.id} className="border-b hover:bg-muted/30 transition-colors">
                   <td className="p-4 text-sm">
                     {new Date(expense.date).toLocaleDateString('pt-BR')}

@@ -167,7 +167,7 @@ export default function ProjecaoCaixa() {
         let status: "safe" | "warning" | "risk";
         if (balanceAfter < 0) {
           status = "risk";
-        } else if (balanceAfter < balanceBefore * 0.1) {
+        } else if (balanceAfter < balanceBefore * 0.47) {
           status = "warning";
         } else {
           status = "safe";
