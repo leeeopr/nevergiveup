@@ -1,109 +1,267 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Plus, Search, Calendar } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Plus, Search, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { loadFinancialData } from '@/lib/storage';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { loadFinancialData, updateRevenue, updateExpense, deleteRevenue, deleteExpense, deleteTransfer, saveFinancialData } from '@/lib/storage';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 type LogType = 'revenue' | 'expense' | 'transfer';
 type LogStatus = 'pending' | 'completed' | 'scheduled';
 
 interface LogEntry {
   id: string;
+  originalId: string;
   date: string;
   type: LogType;
+  accountId: string;
   accountName: string;
   description: string;
   amount: number;
   category?: string;
   status: LogStatus;
+  clientOrSupplier?: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  coverageStatus: 'safe' | 'warning' | 'risk' | 'income';
   observation?: string;
   fromAccount?: string;
   toAccount?: string;
+  fromAccountId?: string;
+  toAccountId?: string;
 }
 
 export default function DiarioCronologico() {
   const [filter, setFilter] = useState<LogType | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [data, setData] = useState(() => loadFinancialData());
+  const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  const refreshData = () => {
+    setData(loadFinancialData());
+  };
 
   const logs = useMemo(() => {
-    const data = loadFinancialData();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const entries: LogEntry[] = [];
+    const runningBalances: { [accountId: string]: number } = {};
+    
+    // Initialize with initial balances
+    data.accounts.forEach(acc => {
+      if (acc && acc.id) {
+        runningBalances[acc.id] = acc.initialBalance || 0;
+      }
+    });
 
-    // Add revenues
+    // Expand transactions with installments
+    const expandedTransactions: any[] = [];
+
+    // Process revenues
     data.revenues.forEach(rev => {
-      const account = data.accounts.find(a => a.id === rev.accountId);
-      const revDate = parseISO(rev.date);
+      if (!rev || !rev.date) return;
       
-      let status: LogStatus = 'pending';
-      if (rev.status === 'Recebido') status = 'completed';
-      else if (revDate > today) status = 'scheduled';
-
-      entries.push({
-        id: `rev-${rev.id}`,
-        date: rev.date,
-        type: 'revenue',
-        accountName: account?.name || 'Conta desconhecida',
-        description: rev.description,
-        amount: rev.amount,
-        category: rev.category,
-        status,
-        observation: rev.clientOrSupplier ? `Cliente: ${rev.clientOrSupplier}` : undefined,
-      });
+      const installments = Math.max(1, rev.installments || 1);
+      const amount = rev.amount || 0;
+      
+      if (installments <= 1) {
+        expandedTransactions.push({
+          ...rev,
+          originalId: rev.id,
+          type: 'revenue',
+          fullDescription: rev.description,
+        });
+      } else {
+        const installmentAmount = amount / installments;
+        const baseDate = new Date(rev.date);
+        
+        if (isNaN(baseDate.getTime())) return;
+        
+        for (let i = 0; i < installments; i++) {
+          const installmentDate = new Date(baseDate);
+          installmentDate.setMonth(installmentDate.getMonth() + i);
+          
+          if (!isNaN(installmentDate.getTime())) {
+            expandedTransactions.push({
+              ...rev,
+              originalId: rev.id,
+              id: `${rev.id}-${i}`,
+              date: installmentDate.toISOString().split('T')[0],
+              description: `${rev.description} (${i + 1}/${installments})`,
+              fullDescription: rev.description,
+              amount: installmentAmount,
+              type: 'revenue',
+            });
+          }
+        }
+      }
     });
 
-    // Add expenses
+    // Process expenses
     data.expenses.forEach(exp => {
-      const account = data.accounts.find(a => a.id === exp.accountId);
-      const expDate = parseISO(exp.date);
+      if (!exp || !exp.date) return;
       
-      let status: LogStatus = 'pending';
-      if (exp.status === 'Pago') status = 'completed';
-      else if (expDate > today) status = 'scheduled';
+      const installments = Math.max(1, exp.installments || 1);
+      const amount = exp.amount || 0;
+      
+      if (installments <= 1) {
+        expandedTransactions.push({
+          ...exp,
+          originalId: exp.id,
+          type: 'expense',
+          fullDescription: exp.description,
+        });
+      } else {
+        const installmentAmount = amount / installments;
+        const baseDate = new Date(exp.date);
+        
+        if (isNaN(baseDate.getTime())) return;
+        
+        for (let i = 0; i < installments; i++) {
+          const installmentDate = new Date(baseDate);
+          installmentDate.setMonth(installmentDate.getMonth() + i);
+          
+          if (!isNaN(installmentDate.getTime())) {
+            expandedTransactions.push({
+              ...exp,
+              originalId: exp.id,
+              id: `${exp.id}-${i}`,
+              date: installmentDate.toISOString().split('T')[0],
+              description: `${exp.description} (${i + 1}/${installments})`,
+              fullDescription: exp.description,
+              amount: installmentAmount,
+              type: 'expense',
+            });
+          }
+        }
+      }
+    });
 
-      entries.push({
-        id: `exp-${exp.id}`,
-        date: exp.date,
-        type: 'expense',
-        accountName: account?.name || 'Conta desconhecida',
-        description: exp.description,
-        amount: exp.amount,
-        category: exp.category,
-        status,
-        observation: exp.clientOrSupplier ? `Fornecedor: ${exp.clientOrSupplier}` : undefined,
+    // Process transfers
+    data.transfers.forEach(trans => {
+      if (!trans) return;
+      
+      expandedTransactions.push({
+        ...trans,
+        originalId: trans.id,
+        type: 'transfer',
+        fullDescription: trans.description,
       });
     });
 
-    // Add transfers
-    data.transfers.forEach(trans => {
-      const fromAccount = data.accounts.find(a => a.id === trans.fromAccountId);
-      const toAccount = data.accounts.find(a => a.id === trans.toAccountId);
-      const transDate = parseISO(trans.date);
+    // Sort by date
+    expandedTransactions.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-      entries.push({
-        id: `trans-${trans.id}`,
-        date: trans.date,
-        type: 'transfer',
-        accountName: fromAccount?.name || 'Conta desconhecida',
-        description: trans.description,
-        amount: trans.amount,
-        status: transDate > today ? 'scheduled' : 'completed',
-        fromAccount: fromAccount?.name,
-        toAccount: toAccount?.name,
-        observation: `De ${fromAccount?.name} para ${toAccount?.name}`,
-      });
+    // Calculate balances and create entries
+    expandedTransactions.forEach(t => {
+      const account = data.accounts.find(a => a.id === t.accountId);
+      const tDate = parseISO(t.date);
+      
+      let status: LogStatus = 'pending';
+      let balanceBefore = runningBalances[t.accountId] || 0;
+      let balanceAfter = balanceBefore;
+      let coverageStatus: 'safe' | 'warning' | 'risk' | 'income' = 'safe';
+
+      if (t.type === 'revenue') {
+        if (t.status === 'Recebido') status = 'completed';
+        else if (tDate > today) status = 'scheduled';
+        
+        balanceAfter = balanceBefore + t.amount;
+        coverageStatus = 'income';
+        runningBalances[t.accountId] = balanceAfter;
+
+        entries.push({
+          id: `rev-${t.id}`,
+          originalId: t.originalId,
+          date: t.date,
+          type: 'revenue',
+          accountId: t.accountId,
+          accountName: account?.name || 'Conta desconhecida',
+          description: t.description,
+          amount: t.amount,
+          category: t.category,
+          status,
+          clientOrSupplier: t.clientOrSupplier,
+          balanceBefore,
+          balanceAfter,
+          coverageStatus,
+          observation: t.clientOrSupplier ? `Cliente: ${t.clientOrSupplier}` : undefined,
+        });
+      } else if (t.type === 'expense') {
+        if (t.status === 'Pago') status = 'completed';
+        else if (tDate > today) status = 'scheduled';
+        
+        balanceAfter = balanceBefore - t.amount;
+        
+        if (balanceAfter < 0) coverageStatus = 'risk';
+        else if (balanceAfter < balanceBefore * 0.47) coverageStatus = 'warning';
+        else coverageStatus = 'safe';
+        
+        runningBalances[t.accountId] = balanceAfter;
+
+        entries.push({
+          id: `exp-${t.id}`,
+          originalId: t.originalId,
+          date: t.date,
+          type: 'expense',
+          accountId: t.accountId,
+          accountName: account?.name || 'Conta desconhecida',
+          description: t.description,
+          amount: t.amount,
+          category: t.category,
+          status,
+          clientOrSupplier: t.clientOrSupplier,
+          balanceBefore,
+          balanceAfter,
+          coverageStatus,
+          observation: t.clientOrSupplier ? `Fornecedor: ${t.clientOrSupplier}` : undefined,
+        });
+      } else if (t.type === 'transfer') {
+        const fromAccount = data.accounts.find(a => a.id === t.fromAccountId);
+        const toAccount = data.accounts.find(a => a.id === t.toAccountId);
+        
+        status = tDate > today ? 'scheduled' : 'completed';
+        
+        balanceBefore = runningBalances[t.fromAccountId] || 0;
+        balanceAfter = balanceBefore - t.amount;
+        
+        runningBalances[t.fromAccountId] = balanceAfter;
+        runningBalances[t.toAccountId] = (runningBalances[t.toAccountId] || 0) + t.amount;
+
+        entries.push({
+          id: `trans-${t.id}`,
+          originalId: t.originalId,
+          date: t.date,
+          type: 'transfer',
+          accountId: t.fromAccountId,
+          accountName: fromAccount?.name || 'Conta desconhecida',
+          description: t.description,
+          amount: t.amount,
+          status,
+          balanceBefore,
+          balanceAfter,
+          coverageStatus: 'safe',
+          fromAccount: fromAccount?.name,
+          toAccount: toAccount?.name,
+          fromAccountId: t.fromAccountId,
+          toAccountId: t.toAccountId,
+          observation: `De ${fromAccount?.name} para ${toAccount?.name}`,
+        });
+      }
     });
 
     // Sort by date (descending - most recent first)
     return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, []);
+  }, [data]);
 
   const filteredLogs = useMemo(() => {
     let filtered = logs;
@@ -169,6 +327,101 @@ export default function DiarioCronologico() {
         return <Badge variant="outline" className="border-muted-foreground text-muted-foreground">Pendente</Badge>;
       case 'scheduled':
         return <Badge variant="outline" className="border-yellow-500 text-yellow-500">Agendado</Badge>;
+    }
+  };
+
+  const getCoverageBadge = (coverageStatus: 'safe' | 'warning' | 'risk' | 'income') => {
+    switch (coverageStatus) {
+      case 'safe':
+        return <Badge className="bg-green-500/10 text-green-500 hover:bg-green-500/20">✓ OK</Badge>;
+      case 'warning':
+        return <Badge className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20">⚠ Apertado</Badge>;
+      case 'risk':
+        return <Badge className="bg-red-500/10 text-red-500 hover:bg-red-500/20">✗ Risco</Badge>;
+      case 'income':
+        return <Badge className="bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">💰 Receita</Badge>;
+    }
+  };
+
+  const handleEdit = (entry: LogEntry) => {
+    setEditingEntry(entry);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDelete = (entry: LogEntry) => {
+    if (!confirm('Tem certeza que deseja excluir esta entrada?')) return;
+
+    try {
+      if (entry.type === 'revenue') {
+        deleteRevenue(entry.originalId);
+      } else if (entry.type === 'expense') {
+        deleteExpense(entry.originalId);
+      } else if (entry.type === 'transfer') {
+        deleteTransfer(entry.originalId);
+      }
+      
+      refreshData();
+      toast.success('Entrada excluída com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao excluir entrada');
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingEntry) return;
+
+    try {
+      if (editingEntry.type === 'revenue') {
+        const revenue = data.revenues.find(r => r.id === editingEntry.originalId);
+        if (revenue) {
+          updateRevenue(editingEntry.originalId, {
+            ...revenue,
+            description: editingEntry.description,
+            amount: editingEntry.amount,
+            category: editingEntry.category || '',
+            clientOrSupplier: editingEntry.clientOrSupplier || '',
+            date: editingEntry.date,
+            accountId: editingEntry.accountId,
+          });
+        }
+      } else if (editingEntry.type === 'expense') {
+        const expense = data.expenses.find(e => e.id === editingEntry.originalId);
+        if (expense) {
+          updateExpense(editingEntry.originalId, {
+            ...expense,
+            description: editingEntry.description,
+            amount: editingEntry.amount,
+            category: editingEntry.category || '',
+            clientOrSupplier: editingEntry.clientOrSupplier || '',
+            date: editingEntry.date,
+            accountId: editingEntry.accountId,
+          });
+        }
+      } else if (editingEntry.type === 'transfer') {
+        const transfer = data.transfers.find(t => t.id === editingEntry.originalId);
+        if (transfer) {
+          const updatedTransfers = data.transfers.map(t => 
+            t.id === editingEntry.originalId 
+              ? {
+                  ...t,
+                  description: editingEntry.description,
+                  amount: editingEntry.amount,
+                  date: editingEntry.date,
+                  fromAccountId: editingEntry.fromAccountId || t.fromAccountId,
+                  toAccountId: editingEntry.toAccountId || t.toAccountId,
+                }
+              : t
+          );
+          saveFinancialData({ ...data, transfers: updatedTransfers });
+        }
+      }
+      
+      refreshData();
+      setIsEditDialogOpen(false);
+      setEditingEntry(null);
+      toast.success('Entrada atualizada com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao atualizar entrada');
     }
   };
 
@@ -314,36 +567,68 @@ export default function DiarioCronologico() {
                                   {getTypeIcon(entry.type)}
                                 </div>
 
-                                <div className="flex-1 space-y-2">
+                                 <div className="flex-1 space-y-3">
                                   <div className="flex items-start justify-between gap-4">
-                                    <div>
+                                    <div className="flex-1">
                                       <p className="font-semibold text-foreground uppercase text-sm">
                                         {entry.accountName}
                                       </p>
                                       <p className="text-foreground mt-1">
                                         {entry.description}
                                       </p>
+                                      {entry.clientOrSupplier && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {entry.type === 'revenue' ? 'Cliente' : 'Fornecedor'}: {entry.clientOrSupplier}
+                                        </p>
+                                      )}
                                       {entry.observation && (
                                         <p className="text-xs text-muted-foreground mt-1">
                                           {entry.observation}
                                         </p>
                                       )}
                                     </div>
-                                    <div className="text-right">
-                                      <div className="text-xl">
+                                    <div className="text-right space-y-1">
+                                      <div className="text-xl font-bold">
                                         {formatAmount(entry.amount, entry.type)}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Antes: R$ {entry.balanceBefore.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </div>
+                                      <div className={`text-xs font-medium ${entry.balanceAfter < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                        Após: R$ {entry.balanceAfter.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                       </div>
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {getTypeBadge(entry.type)}
-                                    {getStatusBadge(entry.status)}
-                                    {entry.category && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        {entry.category}
-                                      </Badge>
-                                    )}
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {getTypeBadge(entry.type)}
+                                      {getStatusBadge(entry.status)}
+                                      {getCoverageBadge(entry.coverageStatus)}
+                                      {entry.category && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          {entry.category}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleEdit(entry)}
+                                        className="h-8 w-8 p-0"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleDelete(entry)}
+                                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -359,6 +644,148 @@ export default function DiarioCronologico() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Editar Entrada</DialogTitle>
+          </DialogHeader>
+          {editingEntry && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <Input
+                  type="date"
+                  value={editingEntry.date}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, date: e.target.value })}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Input
+                  value={editingEntry.description}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, description: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Valor</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editingEntry.amount}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, amount: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+
+              {editingEntry.type !== 'transfer' && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Categoria</Label>
+                    <Select
+                      value={editingEntry.category}
+                      onValueChange={(value) => setEditingEntry({ ...editingEntry, category: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {data.categories
+                          .filter(c => c.type === (editingEntry.type === 'revenue' ? 'Receita' : 'Despesa'))
+                          .map(cat => (
+                            <SelectItem key={cat.id} value={cat.name}>
+                              {cat.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>{editingEntry.type === 'revenue' ? 'Cliente' : 'Fornecedor'}</Label>
+                    <Input
+                      value={editingEntry.clientOrSupplier || ''}
+                      onChange={(e) => setEditingEntry({ ...editingEntry, clientOrSupplier: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Conta</Label>
+                    <Select
+                      value={editingEntry.accountId}
+                      onValueChange={(value) => setEditingEntry({ ...editingEntry, accountId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {data.accounts.map(acc => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {editingEntry.type === 'transfer' && (
+                <>
+                  <div className="space-y-2">
+                    <Label>De (Conta Origem)</Label>
+                    <Select
+                      value={editingEntry.fromAccountId}
+                      onValueChange={(value) => setEditingEntry({ ...editingEntry, fromAccountId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {data.accounts.map(acc => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Para (Conta Destino)</Label>
+                    <Select
+                      value={editingEntry.toAccountId}
+                      onValueChange={(value) => setEditingEntry({ ...editingEntry, toAccountId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {data.accounts.map(acc => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSaveEdit}>
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
