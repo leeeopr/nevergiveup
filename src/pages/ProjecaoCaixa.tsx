@@ -24,7 +24,21 @@ interface DailyBalance {
 }
 
 export default function ProjecaoCaixa() {
-  const data = loadFinancialData();
+  const [data, setData] = useState(() => {
+    try {
+      return loadFinancialData();
+    } catch (error) {
+      console.error('Erro ao carregar dados financeiros:', error);
+      return { 
+        revenues: [], 
+        expenses: [], 
+        transfers: [], 
+        accounts: [], 
+        categories: [] 
+      };
+    }
+  });
+  
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -32,132 +46,166 @@ export default function ProjecaoCaixa() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterAccount, setFilterAccount] = useState<string>("all");
 
-  // Expand transactions with installments into individual daily transactions
+  // Expandir transações com parcelas em transações diárias individuais
   const expandedTransactions = useMemo(() => {
     const expanded: DailyTransaction[] = [];
 
-    // Process revenues
+    // Processar receitas com validação
     data.revenues.forEach(rev => {
-      if (rev.installments <= 1) {
+      if (!rev || !rev.date) return; // Pular entradas inválidas
+      
+      const installments = Math.max(1, rev.installments || 1);
+      const amount = rev.amount || 0;
+      
+      if (installments <= 1) {
         expanded.push({
           date: rev.date,
-          description: rev.description,
-          amount: rev.amount,
+          description: rev.description || '',
+          amount: amount,
           type: "income",
-          category: rev.category,
-          clientOrSupplier: rev.clientOrSupplier,
-          accountId: rev.accountId,
+          category: rev.category || '',
+          clientOrSupplier: rev.clientOrSupplier || '',
+          accountId: rev.accountId || '',
         });
       } else {
-        const installmentAmount = rev.amount / rev.installments;
+        const installmentAmount = amount / installments;
         const baseDate = new Date(rev.date);
-        for (let i = 0; i < rev.installments; i++) {
+        
+        // Pular se a data for inválida
+        if (isNaN(baseDate.getTime())) return;
+        
+        for (let i = 0; i < installments; i++) {
           const installmentDate = new Date(baseDate);
           installmentDate.setMonth(installmentDate.getMonth() + i);
-          expanded.push({
-            date: installmentDate.toISOString().split('T')[0],
-            description: `${rev.description} (${i + 1}/${rev.installments})`,
-            amount: installmentAmount,
-            type: "income",
-            category: rev.category,
-            clientOrSupplier: rev.clientOrSupplier,
-            accountId: rev.accountId,
-          });
+          
+          // Garantir que a data é válida antes de adicionar
+          if (!isNaN(installmentDate.getTime())) {
+            expanded.push({
+              date: installmentDate.toISOString().split('T')[0],
+              description: `${rev.description || ''} (${i + 1}/${installments})`,
+              amount: installmentAmount,
+              type: "income",
+              category: rev.category || '',
+              clientOrSupplier: rev.clientOrSupplier || '',
+              accountId: rev.accountId || '',
+            });
+          }
         }
       }
     });
 
-    // Process expenses
+    // Processar despesas com validação
     data.expenses.forEach(exp => {
-      if (exp.installments <= 1) {
+      if (!exp || !exp.date) return;
+      
+      const installments = Math.max(1, exp.installments || 1);
+      const amount = exp.amount || 0;
+      
+      if (installments <= 1) {
         expanded.push({
           date: exp.date,
-          description: exp.description,
-          amount: exp.amount,
+          description: exp.description || '',
+          amount: amount,
           type: "expense",
-          category: exp.category,
-          clientOrSupplier: exp.clientOrSupplier,
-          accountId: exp.accountId,
+          category: exp.category || '',
+          clientOrSupplier: exp.clientOrSupplier || '',
+          accountId: exp.accountId || '',
         });
       } else {
-        const installmentAmount = exp.amount / exp.installments;
+        const installmentAmount = amount / installments;
         const baseDate = new Date(exp.date);
-        for (let i = 0; i < exp.installments; i++) {
+        
+        if (isNaN(baseDate.getTime())) return;
+        
+        for (let i = 0; i < installments; i++) {
           const installmentDate = new Date(baseDate);
           installmentDate.setMonth(installmentDate.getMonth() + i);
-          expanded.push({
-            date: installmentDate.toISOString().split('T')[0],
-            description: `${exp.description} (${i + 1}/${exp.installments})`,
-            amount: installmentAmount,
-            type: "expense",
-            category: exp.category,
-            clientOrSupplier: exp.clientOrSupplier,
-            accountId: exp.accountId,
-          });
+          
+          if (!isNaN(installmentDate.getTime())) {
+            expanded.push({
+              date: installmentDate.toISOString().split('T')[0],
+              description: `${exp.description || ''} (${i + 1}/${installments})`,
+              amount: installmentAmount,
+              type: "expense",
+              category: exp.category || '',
+              clientOrSupplier: exp.clientOrSupplier || '',
+              accountId: exp.accountId || '',
+            });
+          }
         }
       }
     });
 
-    // Process transfers
+    // Processar transferências com validação
     data.transfers.forEach(transfer => {
+      if (!transfer) return;
+      
       expanded.push({
-        date: transfer.date,
-        description: `Transferência: ${transfer.description}`,
-        amount: transfer.amount,
+        date: transfer.date || new Date().toISOString().split('T')[0],
+        description: `Transferência: ${transfer.description || ''}`,
+        amount: transfer.amount || 0,
         type: "transfer",
         category: "Transferência",
         clientOrSupplier: "",
-        accountId: transfer.fromAccountId,
+        accountId: transfer.fromAccountId || '',
       });
     });
 
-    return expanded.sort((a, b) => a.date.localeCompare(b.date));
+    return expanded.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [data.revenues, data.expenses, data.transfers]);
 
-  // Calculate daily balances for all accounts
+  // Calcular saldos diários para todas as contas
   const dailyBalances = useMemo(() => {
     const balances: DailyBalance[] = [];
     const runningBalances: { [accountId: string]: number } = {};
     
-    // Initialize with initial balances
+    // Inicializar com saldos iniciais
     data.accounts.forEach(acc => {
-      runningBalances[acc.id] = acc.initialBalance;
+      if (acc && acc.id) {
+        runningBalances[acc.id] = acc.initialBalance || 0;
+      }
     });
-
+    
     const filteredTransactions = expandedTransactions.filter(t => {
-      const matchesDate = t.date >= startDate && t.date <= endDate;
+      if (!t.date) return false;
+      
+      const matchesDate = t.date <= endDate;
       const matchesCategory = filterCategory === "all" || t.category === filterCategory;
       const matchesAccount = filterAccount === "all" || t.accountId === filterAccount;
       return matchesDate && matchesCategory && matchesAccount;
     });
 
-    // Group transactions by date
+    // Agrupar transações por data
     const transactionsByDate = new Map<string, DailyTransaction[]>();
     filteredTransactions.forEach(t => {
+      if (!t.date) return;
+      
       if (!transactionsByDate.has(t.date)) {
         transactionsByDate.set(t.date, []);
       }
       transactionsByDate.get(t.date)!.push(t);
     });
 
-    // Sort dates
+    // Ordenar datas
     const sortedDates = Array.from(transactionsByDate.keys()).sort();
 
     sortedDates.forEach(date => {
-      const dayTransactions = transactionsByDate.get(date)!;
+      const dayTransactions = transactionsByDate.get(date) || [];
       
       dayTransactions.forEach(t => {
+        if (!t.accountId) return;
+        
         if (t.type === "income") {
-          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + (t.amount || 0);
         } else if (t.type === "expense") {
-          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - (t.amount || 0);
         } else if (t.type === "transfer") {
           const transfer = data.transfers.find(tr => 
-            tr.date === t.date && tr.description === t.description.replace("Transferência: ", "")
+            tr && tr.date === t.date && tr.description === t.description.replace("Transferência: ", "")
           );
           if (transfer) {
-            runningBalances[transfer.fromAccountId] = (runningBalances[transfer.fromAccountId] || 0) - transfer.amount;
-            runningBalances[transfer.toAccountId] = (runningBalances[transfer.toAccountId] || 0) + transfer.amount;
+            runningBalances[transfer.fromAccountId] = (runningBalances[transfer.fromAccountId] || 0) - (transfer.amount || 0);
+            runningBalances[transfer.toAccountId] = (runningBalances[transfer.toAccountId] || 0) + (transfer.amount || 0);
           }
         }
       });
@@ -170,107 +218,115 @@ export default function ProjecaoCaixa() {
     });
 
     return balances;
-  }, [expandedTransactions, startDate, endDate, filterCategory, filterAccount, data.accounts, data.transfers]);
+  }, [expandedTransactions, endDate, filterCategory, filterAccount, data.accounts, data.transfers]);
 
-  // Analyze expense coverage per account
+  // Analisar cobertura de despesas por conta
   const expenseCoverage = useMemo(() => {
+    const analysis: any[] = [];
     const runningBalances: { [accountId: string]: number } = {};
     
-    // Initialize with initial balances
+    // Inicializar com verificações de segurança
     data.accounts.forEach(acc => {
-      runningBalances[acc.id] = acc.initialBalance;
+      if (acc && acc.id) {
+        runningBalances[acc.id] = acc.initialBalance || 0;
+      }
     });
-    const analysis: Array<{
-      date: string;
-      expense: string;
-      amount: number;
-      balanceBefore: number;
-      balanceAfter: number;
-      status: "safe" | "warning" | "risk";
-      category: string;
-      supplier: string;
-      accountId: string;
-    }> = [];
 
-    const allTransactions = expandedTransactions.filter(t => {
-      const matchesDate = t.date >= startDate && t.date <= endDate;
-      const matchesCategory = filterCategory === "all" || t.category === filterCategory;
-      const matchesAccount = filterAccount === "all" || t.accountId === filterAccount;
-      return matchesDate && matchesCategory && matchesAccount;
-    });
+    const allTransactions = expandedTransactions
+      .filter(t => {
+        if (!t.date) return false;
+        
+        const transactionDate = new Date(t.date);
+        const endDateObj = new Date(endDate);
+        
+        return transactionDate <= endDateObj &&
+          (filterCategory === "all" || t.category === filterCategory) &&
+          (filterAccount === "all" || t.accountId === filterAccount);
+      })
+      .sort((a, b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        return dateA - dateB;
+      });
 
     allTransactions.forEach(t => {
+      // Adicionar verificações de segurança para existência da conta
+      const currentBalance = runningBalances[t.accountId] || 0;
+      let balanceBefore = currentBalance;
+      let balanceAfter = balanceBefore;
+
+      let status: "income" | "safe" | "warning" | "risk" = "safe";
+
       if (t.type === "expense") {
-        const balanceBefore = runningBalances[t.accountId] || 0;
-        const balanceAfter = balanceBefore - t.amount;
-        
-        let status: "safe" | "warning" | "risk";
-        if (balanceAfter < 0) {
-          status = "risk";
-        } else if (balanceAfter < balanceBefore * 0.47) {
-          status = "warning";
-        } else {
-          status = "safe";
-        }
-
-        analysis.push({
-          date: t.date,
-          expense: t.description,
-          amount: t.amount,
-          balanceBefore,
-          balanceAfter,
-          status,
-          category: t.category,
-          supplier: t.clientOrSupplier,
-          accountId: t.accountId,
-        });
-      }
-
-      // Update running balance
-      if (t.type === "income") {
-        runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
-      } else if (t.type === "expense") {
-        runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+        balanceAfter -= (t.amount || 0);
+        if (balanceAfter < 0) status = "risk";
+        else if (balanceAfter < balanceBefore * 0.47) status = "warning";
+      } else if (t.type === "income") {
+        balanceAfter += (t.amount || 0);
+        status = "income";
       } else if (t.type === "transfer") {
-        const transfer = data.transfers.find(tr => 
-          tr.date === t.date && tr.description === t.description.replace("Transferência: ", "")
+        const transfer = data.transfers.find(
+          tr => tr && tr.date === t.date && tr.description === t.description.replace("Transferência: ", "")
         );
         if (transfer) {
-          runningBalances[transfer.fromAccountId] = (runningBalances[transfer.fromAccountId] || 0) - transfer.amount;
-          runningBalances[transfer.toAccountId] = (runningBalances[transfer.toAccountId] || 0) + transfer.amount;
+          runningBalances[transfer.fromAccountId] = (runningBalances[transfer.fromAccountId] || 0) - (transfer.amount || 0);
+          runningBalances[transfer.toAccountId] = (runningBalances[transfer.toAccountId] || 0) + (transfer.amount || 0);
         }
+      }
+
+      analysis.push({
+        date: t.date,
+        description: t.description,
+        amount: t.amount || 0,
+        balanceBefore,
+        balanceAfter,
+        status,
+        type: t.type,
+        category: t.category,
+        supplier: t.clientOrSupplier,
+        accountId: t.accountId,
+      });
+
+      // Atualizar saldo com verificação de segurança
+      if (t.accountId) {
+        if (t.type === "expense") runningBalances[t.accountId] = balanceAfter;
+        else if (t.type === "income") runningBalances[t.accountId] = balanceAfter;
       }
     });
 
     return analysis;
-  }, [expandedTransactions, startDate, endDate, filterCategory, filterAccount, data.accounts, data.transfers]);
+  }, [expandedTransactions, endDate, filterCategory, filterAccount, data.accounts, data.transfers]);
 
-  // Chart data
-  const chartData = dailyBalances.map(db => {
-    const dataPoint: any = {
-      date: new Date(db.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-    };
-    
-    // Add balance for each account or total
-    if (filterAccount === "all") {
-      let total = 0;
-      data.accounts.forEach(acc => {
-        total += db.balances[acc.id] || 0;
-      });
-      dataPoint.total = total;
-    } else {
-      data.accounts.forEach(acc => {
-        if (filterAccount === "all" || filterAccount === acc.id) {
-          dataPoint[acc.name] = db.balances[acc.id] || 0;
-        }
-      });
-    }
-    
-    return dataPoint;
-  });
+  // Dados do gráfico - mantém cálculo completo, mas exibe só o intervalo escolhido
+  const chartData = dailyBalances
+    .filter(db => db.date >= startDate && db.date <= endDate)
+    .map(db => {
+      const dataPoint: any = {
+        date: new Date(db.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      };
+
+      // soma total ou mostra conta individual
+      if (filterAccount === "all") {
+        let total = 0;
+        data.accounts.forEach(acc => {
+          if (acc && acc.id) {
+            total += db.balances[acc.id] || 0;
+          }
+        });
+        dataPoint.total = total;
+      } else {
+        data.accounts.forEach(acc => {
+          if (acc && (filterAccount === "all" || filterAccount === acc.id)) {
+            dataPoint[acc.name] = db.balances[acc.id] || 0;
+          }
+        });
+      }
+
+      return dataPoint;
+    });
 
   const allCategories = Array.from(new Set([
-    ...data.categories.map(c => c.name)
+    ...data.categories.map(c => c.name).filter(Boolean)
   ]));
 
   const riskyExpenses = expenseCoverage.filter(e => e.status === "risk").length;
@@ -284,7 +340,7 @@ export default function ProjecaoCaixa() {
         <p className="text-muted-foreground mt-1">Análise de cobertura de despesas e projeção de saldo</p>
       </div>
 
-      {/* Filters */}
+      {/* Filtros */}
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
@@ -320,7 +376,7 @@ export default function ProjecaoCaixa() {
         </div>
       </Card>
 
-      {/* Summary Cards */}
+      {/* Cartões de Resumo */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-4 bg-success/10 border-success/20">
           <div className="flex items-center gap-2 mb-2">
@@ -345,7 +401,7 @@ export default function ProjecaoCaixa() {
         </Card>
       </div>
 
-      {/* Balance Chart */}
+      {/* Gráfico de Saldo */}
       <Card className="p-6">
         <h2 className="text-xl font-semibold mb-4">Projeção de Saldo</h2>
         <ResponsiveContainer width="100%" height={300}>
@@ -361,18 +417,35 @@ export default function ProjecaoCaixa() {
               contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
             />
             <ReferenceLine y={0} stroke="hsl(var(--destructive))" strokeDasharray="3 3" />
-            <Line 
-              type="monotone" 
-              dataKey="balance" 
-              stroke="hsl(var(--primary))" 
-              strokeWidth={2}
-              dot={{ fill: 'hsl(var(--primary))' }}
-            />
+            {filterAccount === "all" ? (
+              <Line
+                type="monotone"
+                dataKey="total"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                dot={{ fill: 'hsl(var(--primary))' }}
+                name="Saldo Total"
+              />
+            ) : (
+              data.accounts
+                .filter(acc => filterAccount === "all" || filterAccount === acc.id)
+                .map(acc => (
+                  <Line
+                    key={acc.id}
+                    type="monotone"
+                    dataKey={acc.name}
+                    stroke={acc.color || "hsl(var(--primary))"}
+                    strokeWidth={2}
+                    dot={{ fill: acc.color || "hsl(var(--primary))" }}
+                    name={acc.name}
+                  />
+                ))
+            )}
           </LineChart>
         </ResponsiveContainer>
       </Card>
 
-      {/* Expense Coverage Table */}
+      {/* Tabela de Cobertura de Despesas */}
       <Card>
         <div className="p-4 border-b bg-muted/50">
           <h2 className="text-xl font-semibold">Análise de Cobertura de Despesas</h2>
@@ -382,9 +455,10 @@ export default function ProjecaoCaixa() {
             <thead className="border-b bg-muted/50">
               <tr>
                 <th className="p-4 text-left text-sm font-medium">Data</th>
-                <th className="p-4 text-left text-sm font-medium">Despesa</th>
+                <th className="p-4 text-left text-sm font-medium">Despesa / Receita</th>
                 <th className="p-4 text-left text-sm font-medium">Categoria</th>
                 <th className="p-4 text-left text-sm font-medium">Fornecedor</th>
+                <th className="p-4 text-left text-sm font-medium">Conta</th>
                 <th className="p-4 text-right text-sm font-medium">Valor</th>
                 <th className="p-4 text-right text-sm font-medium">Saldo Anterior</th>
                 <th className="p-4 text-right text-sm font-medium">Saldo Após</th>
@@ -392,45 +466,47 @@ export default function ProjecaoCaixa() {
               </tr>
             </thead>
             <tbody>
-              {expenseCoverage.map((exp, idx) => (
-                <tr 
-                  key={idx} 
-                  className={`border-b transition-colors ${
-                    exp.status === "risk" ? "bg-destructive/5 hover:bg-destructive/10" :
-                    exp.status === "warning" ? "bg-warning/5 hover:bg-warning/10" :
-                    "hover:bg-muted/30"
-                  }`}
-                >
-                  <td className="p-4 text-sm">
-                    {new Date(exp.date).toLocaleDateString('pt-BR')}
-                  </td>
-                  <td className="p-4 text-sm">{exp.expense}</td>
-                  <td className="p-4 text-sm">{exp.category}</td>
-                  <td className="p-4 text-sm">{exp.supplier}</td>
-                  <td className="p-4 text-right text-sm font-medium">
-                    R$ {exp.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="p-4 text-right text-sm">
-                    R$ {exp.balanceBefore.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className={`p-4 text-right text-sm font-medium ${
-                    exp.balanceAfter < 0 ? "text-destructive" : ""
-                  }`}>
-                    R$ {exp.balanceAfter.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="p-4 text-center">
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                      exp.status === "safe" ? "bg-success/10 text-success" :
-                      exp.status === "warning" ? "bg-warning/10 text-warning" :
-                      "bg-destructive/10 text-destructive"
-                    }`}>
-                      {exp.status === "safe" ? "✓ OK" : 
-                       exp.status === "warning" ? "⚠ Apertado" : 
-                       "✗ Risco"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {expenseCoverage.map((exp, idx) => {
+                const accountName = data.accounts.find(acc => acc.id === exp.accountId)?.name || exp.accountId;
+                return (
+                  <tr 
+                    key={idx} 
+                    className={`border-b transition-colors ${
+                      exp.status === "risk" ? "bg-destructive/5 hover:bg-destructive/10" :
+                      exp.status === "warning" ? "bg-warning/5 hover:bg-warning/10" :
+                      "hover:bg-muted/30"
+                    }`}
+                  >
+                    <td className="p-4 text-sm">{new Date(exp.date).toLocaleDateString('pt-BR')}</td>
+                    <td className="p-4 text-sm">{exp.description}</td>
+                    <td className="p-4 text-sm">{exp.category}</td>
+                    <td className="p-4 text-sm">{exp.supplier}</td>
+                    <td className="p-4 text-sm">{accountName}</td>
+                    <td className="p-4 text-right text-sm font-medium">
+                      R$ {exp.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="p-4 text-right text-sm">
+                      R$ {exp.balanceBefore.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className={`p-4 text-right text-sm font-medium ${exp.balanceAfter < 0 ? "text-destructive" : ""}`}>
+                      R$ {exp.balanceAfter.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="p-4 text-center">
+                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                        exp.status === "safe" ? "bg-success/10 text-success" :
+                        exp.status === "warning" ? "bg-warning/10 text-warning" :
+                        exp.status === "risk" ? "bg-destructive/10 text-destructive" :
+                        exp.status === "income" ? "bg-green-100 text-green-700" : ""
+                      }`}>
+                        {exp.status === "safe" ? "✓ OK" : 
+                         exp.status === "warning" ? "⚠ Apertado" : 
+                         exp.status === "risk" ? "✗ Risco" :
+                         exp.status === "income" ? "💰 Receita" : ""}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
