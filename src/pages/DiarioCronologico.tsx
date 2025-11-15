@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { loadFinancialData, updateRevenue, updateExpense, deleteRevenue, deleteExpense, deleteTransfer, saveFinancialData } from '@/lib/storage';
+import { loadFinancialData, updateRevenue, updateExpense, deleteRevenue, deleteExpense, deleteTransfer, saveFinancialData } from "@/lib/googleSheets";
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -41,7 +41,17 @@ interface LogEntry {
 export default function DiarioCronologico() {
   const [filter, setFilter] = useState<LogType | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [data, setData] = useState(() => loadFinancialData());
+  const [data, setData] = useState({ 
+    accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+  });
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const financialData = await loadFinancialData();
+      setData(financialData);
+    };
+    fetchData();
+  }, []);
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 

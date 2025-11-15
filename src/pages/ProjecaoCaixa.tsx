@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { loadFinancialData } from "@/lib/storage";
+import { loadFinancialData } from "@/lib/googleSheets";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 
 interface DailyTransaction {
@@ -24,20 +24,21 @@ interface DailyBalance {
 }
 
 export default function ProjecaoCaixa() {
-  const [data, setData] = useState(() => {
+const [data, setData] = useState({ 
+  revenues: [], expenses: [], transfers: [], accounts: [], categories: [] 
+});
+
+useEffect(() => {
+  const fetchData = async () => {
     try {
-      return loadFinancialData();
+      const financialData = await loadFinancialData();
+      setData(financialData);
     } catch (error) {
-      console.error('Erro ao carregar dados financeiros:', error);
-      return { 
-        revenues: [], 
-        expenses: [], 
-        transfers: [], 
-        accounts: [], 
-        categories: [] 
-      };
+      console.error('Erro ao carregar dados:', error);
     }
-  });
+  };
+  fetchData();
+}, []);
   
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(

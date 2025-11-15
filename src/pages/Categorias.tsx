@@ -7,10 +7,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Category, FinancialData, CategoryType } from "@/types/financial";
-import { loadFinancialData, saveFinancialData } from "@/lib/storage";
+import { loadFinancialData, saveFinancialData } from "@/lib/googleSheets";
 
 export default function Categorias() {
-  const [data, setData] = useState<FinancialData>(loadFinancialData());
+const [data, setData] = useState<FinancialData>({ 
+  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+});
+
+useEffect(() => {
+  const fetchData = async () => {
+    const financialData = await loadFinancialData();
+    setData(financialData);
+  };
+  fetchData();
+}, []);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [formData, setFormData] = useState<Partial<Category>>({

@@ -4,11 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { loadFinancialData, saveFinancialData } from "@/lib/storage";
+import { loadFinancialData, saveFinancialData } from "@/lib/googleSheets";
 import { importFromExcel } from "@/lib/excel";
 
 export default function Configuracoes() {
-  const [settings, setSettings] = useState(loadFinancialData().settings);
+  const [settings, setSettings] = useState({});
+const [data, setData] = useState<FinancialData | null>(null);
+
+useEffect(() => {
+  const fetchData = async () => {
+    const financialData = await loadFinancialData();
+    setData(financialData);
+    setSettings(financialData.settings || {});
+  };
+  fetchData();
+}, []);
 
   const handleSave = () => {
     const data = loadFinancialData();

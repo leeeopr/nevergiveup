@@ -7,10 +7,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Transaction, FinancialData } from "@/types/financial";
-import { loadFinancialData, addRevenue, updateRevenue, deleteRevenue, saveFinancialData } from "@/lib/storage";
+import { loadFinancialData, addRevenue, updateRevenue, deleteRevenue, saveFinancialData } from "@/lib/googleSheets";
 
 export default function Receitas() {
-  const [data, setData] = useState<FinancialData>(loadFinancialData());
+  const [data, setData] = useState<FinancialData>({ 
+  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+});
+
+useEffect(() => {
+  const fetchData = async () => {
+    const financialData = await loadFinancialData();
+    setData(financialData);
+  };
+  fetchData();
+}, []);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRevenue, setEditingRevenue] = useState<Transaction | null>(null);
   const [formData, setFormData] = useState<Partial<Transaction>>({

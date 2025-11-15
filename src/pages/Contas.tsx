@@ -8,10 +8,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Account, Transfer, FinancialData } from "@/types/financial";
-import { loadFinancialData, addAccount, updateAccount, deleteAccount, addTransfer, deleteTransfer, saveFinancialData } from "@/lib/storage";
+import { loadFinancialData, addAccount, updateAccount, deleteAccount, addTransfer, deleteTransfer, saveFinancialData } from "@/lib/googleSheets";
 
 export default function Contas() {
-  const [data, setData] = useState<FinancialData>(loadFinancialData());
+  const [data, setData] = useState<FinancialData>({ 
+  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+});
+
+useEffect(() => {
+  const fetchData = async () => {
+    const financialData = await loadFinancialData();
+    setData(financialData);
+  };
+  fetchData();
+}, []);
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);

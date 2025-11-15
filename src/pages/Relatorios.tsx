@@ -1,13 +1,30 @@
 import { Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { loadFinancialData } from "@/lib/storage";
+import { loadFinancialData } from "@/lib/googleSheets";
 import { exportToExcel } from "@/lib/excel";
 import { toast } from "sonner";
 
 export default function Relatorios() {
   const handleExportExcel = () => {
     try {
-      const data = loadFinancialData();
+      const [data, setData] = useState<FinancialData | null>(null);
+
+useEffect(() => {
+  const fetchData = async () => {
+    const financialData = await loadFinancialData();
+    setData(financialData);
+  };
+  fetchData();
+}, []);
+
+const handleExportExcel = async () => {
+  try {
+    const data = await loadFinancialData();
+    // ... resto do código
+  } catch (error) {
+    toast.error("Erro ao carregar dados para exportação");
+  }
+};
       exportToExcel(data);
       toast.success("Planilha exportada com sucesso!");
     } catch (error) {
