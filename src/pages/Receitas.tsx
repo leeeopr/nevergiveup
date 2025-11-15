@@ -10,8 +10,8 @@ import { Transaction, FinancialData } from "@/types/financial";
 import { loadFinancialData, addRevenue, updateRevenue, deleteRevenue, saveFinancialData } from "@/lib/googleSheets";
 
 export default function Receitas() {
-  const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+const [data, setData] = useState<FinancialData>({ 
+  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
 });
 
 useEffect(() => {
@@ -37,7 +37,7 @@ useEffect(() => {
 
   const revenueCategories = data.categories.filter(c => c.type === "Receita");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.description || !formData.category || !formData.accountId || formData.amount === 0) {
@@ -66,16 +66,18 @@ useEffect(() => {
       toast.success("Receita adicionada com sucesso");
     }
 
-    setData(loadFinancialData());
+    const newData = await loadFinancialData();
+    setData(newData);
     setIsDialogOpen(false);
     setEditingRevenue(null);
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Deseja realmente excluir esta receita?")) {
       deleteRevenue(id);
-      setData(loadFinancialData());
+      const newData = await loadFinancialData();
+      setData(newData);
       toast.success("Receita excluída com sucesso");
     }
   };

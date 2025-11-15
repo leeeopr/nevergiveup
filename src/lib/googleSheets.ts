@@ -1,55 +1,13 @@
 // @/lib/googleSheets.ts
-
-// Interface para os dados financeiros (mantendo compatibilidade com o sistema atual)
-export interface FinancialData {
-  accounts: Account[];
-  revenues: Transaction[];
-  expenses: Transaction[];
-  transfers: Transfer[];
-  categories: Category[];
-  settings: Settings;
-}
-
-export interface Account {
-  id: string;
-  name: string;
-  initialBalance: number;
-  color: string;
-}
-
-export interface Transaction {
-  id: string;
-  accountId: string;
-  date: string;
-  description: string;
-  category: string;
-  clientOrSupplier: string;
-  amount: number;
-  paymentMethod: string;
-  installments: number;
-  status: "Recebido" | "Em aberto" | "Pago";
-}
-
-export interface Transfer {
-  id: string;
-  date: string;
-  description: string;
-  amount: number;
-  fromAccountId: string;
-  toAccountId: string;
-}
-
-export interface Category {
-  id: string;
-  type: "Receita" | "Despesa";
-  name: string;
-  description: string;
-}
-
-export interface Settings {
-  notificationEmail: string;
-  startDate: string;
-}
+import { 
+  FinancialData, 
+  Account, 
+  Transaction, 
+  Transfer, 
+  Category, 
+  Settings,
+  PaymentMethod 
+} from '@/types/financial';
 
 // URL do Google Sheets (pública)
 const GOOGLE_SHEETS_URL = 'https://spreadsheets.google.com/feeds/list/1yhFjYNEBZM8Ne30ih8rcBCj-edmJC5T7zgnKaptrSOs/od6/public/values?alt=json';

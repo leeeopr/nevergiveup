@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Plus, Search, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,7 +42,7 @@ export default function DiarioCronologico() {
   const [filter, setFilter] = useState<LogType | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [data, setData] = useState({ 
-    accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+    accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
   });
 
   useEffect(() => {
@@ -55,8 +55,9 @@ export default function DiarioCronologico() {
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  const refreshData = () => {
-    setData(loadFinancialData());
+  const refreshData = async () => {
+    const financialData = await loadFinancialData();
+    setData(financialData);
   };
 
   const logs = useMemo(() => {

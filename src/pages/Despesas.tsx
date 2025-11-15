@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +10,9 @@ import { Transaction, FinancialData } from "@/types/financial";
 import { loadFinancialData, addExpense, updateExpense, deleteExpense } from "@/lib/googleSheets";
 
 export default function Despesas() {
-  const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
-  });
+const [data, setData] = useState<FinancialData>({ 
+  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
+});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -37,7 +37,7 @@ export default function Despesas() {
 
   const expenseCategories = data.categories.filter(c => c.type === "Despesa");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.description || !formData.category || !formData.accountId || formData.amount === 0) {
@@ -66,16 +66,18 @@ export default function Despesas() {
       toast.success("Despesa adicionada com sucesso");
     }
 
-    setData(loadFinancialData());
+    const newData = await loadFinancialData();
+    setData(newData);
     setIsDialogOpen(false);
     setEditingExpense(null);
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Deseja realmente excluir esta despesa?")) {
       deleteExpense(id);
-      setData(loadFinancialData());
+      const newData = await loadFinancialData();
+      setData(newData);
       toast.success("Despesa excluída com sucesso");
     }
   };
