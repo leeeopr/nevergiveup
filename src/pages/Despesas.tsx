@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,20 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Transaction, FinancialData } from "@/types/financial";
-import { loadFinancialData, addExpense, updateExpense, deleteExpense } from "@/lib/googleSheets";
+import { loadFinancialData, addExpense, updateExpense, deleteExpense } from "@/lib/storage";
 
 export default function Despesas() {
-const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
-});
-
-  useEffect(() => {
-    const fetchData = async () => {
-      const financialData = await loadFinancialData();
-      setData(financialData);
-    };
-    fetchData();
-  }, []);
+  const [data, setData] = useState<FinancialData>(loadFinancialData());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Transaction | null>(null);
   const [formData, setFormData] = useState<Partial<Transaction>>({
@@ -37,7 +27,7 @@ const [data, setData] = useState<FinancialData>({
 
   const expenseCategories = data.categories.filter(c => c.type === "Despesa");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.description || !formData.category || !formData.accountId || formData.amount === 0) {
@@ -66,18 +56,16 @@ const [data, setData] = useState<FinancialData>({
       toast.success("Despesa adicionada com sucesso");
     }
 
-    const newData = await loadFinancialData();
-    setData(newData);
+    setData(loadFinancialData());
     setIsDialogOpen(false);
     setEditingExpense(null);
     resetForm();
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (confirm("Deseja realmente excluir esta despesa?")) {
       deleteExpense(id);
-      const newData = await loadFinancialData();
-      setData(newData);
+      setData(loadFinancialData());
       toast.success("Despesa excluída com sucesso");
     }
   };

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, ArrowRight, Building2, ArrowLeftRight } from "lucide-react";
+import { useState } from "react";
+import { Plus, Pencil, Trash2, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,20 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Account, Transfer, FinancialData } from "@/types/financial";
-import { loadFinancialData, addAccount, updateAccount, deleteAccount, addTransfer, deleteTransfer, saveFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData, addAccount, updateAccount, deleteAccount, addTransfer, deleteTransfer, saveFinancialData } from "@/lib/storage";
 
 export default function Contas() {
-const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
-});
-
-useEffect(() => {
-  const fetchData = async () => {
-    const financialData = await loadFinancialData();
-    setData(financialData);
-  };
-  fetchData();
-}, []);
+  const [data, setData] = useState<FinancialData>(loadFinancialData());
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -40,7 +30,7 @@ useEffect(() => {
     toAccountId: "",
   });
 
-  const handleAccountSubmit = async (e: React.FormEvent) => {
+  const handleAccountSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!accountFormData.name || accountFormData.initialBalance === undefined) {
@@ -63,14 +53,13 @@ useEffect(() => {
       toast.success("Conta adicionada com sucesso");
     }
 
-    const newData = await loadFinancialData();
-    setData(newData);
+    setData(loadFinancialData());
     setIsAccountDialogOpen(false);
     setEditingAccount(null);
     resetAccountForm();
   };
 
-  const handleTransferSubmit = async (e: React.FormEvent) => {
+  const handleTransferSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!transferFormData.fromAccountId || !transferFormData.toAccountId || transferFormData.amount === 0) {
@@ -95,26 +84,23 @@ useEffect(() => {
     addTransfer(transfer);
     toast.success("Transferência registrada com sucesso");
 
-    const newData = await loadFinancialData();
-    setData(newData);
+    setData(loadFinancialData());
     setIsTransferDialogOpen(false);
     resetTransferForm();
   };
 
-  const handleDeleteAccount = async (id: string) => {
+  const handleDeleteAccount = (id: string) => {
     if (confirm("Deseja realmente excluir esta conta?")) {
       deleteAccount(id);
-      const newData = await loadFinancialData();
-      setData(newData);
+      setData(loadFinancialData());
       toast.success("Conta excluída com sucesso");
     }
   };
 
-  const handleDeleteTransfer = async (id: string) => {
+  const handleDeleteTransfer = (id: string) => {
     if (confirm("Deseja realmente excluir esta transferência?")) {
       deleteTransfer(id);
-      const newData = await loadFinancialData();
-      setData(newData);
+      setData(loadFinancialData());
       toast.success("Transferência excluída com sucesso");
     }
   };
@@ -195,7 +181,7 @@ useEffect(() => {
           }}>
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2">
-                <ArrowLeftRight className="h-4 w-4" />
+                <ArrowRightLeft className="h-4 w-4" />
                 Nova Transferência
               </Button>
             </DialogTrigger>

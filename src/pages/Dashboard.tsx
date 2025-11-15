@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, DollarSign, AlertCircle } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
-import { loadFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData } from "@/lib/storage";
 import { FinancialData } from "@/types/financial";
 import {
   LineChart,
@@ -25,11 +25,7 @@ export default function Dashboard() {
   const [data, setData] = useState<FinancialData | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const financialData = await loadFinancialData();
-      setData(financialData);
-    };
-    fetchData();
+    setData(loadFinancialData());
   }, []);
 
   if (!data) return null;

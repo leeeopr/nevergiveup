@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Plus, Search, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { loadFinancialData, updateRevenue, updateExpense, deleteRevenue, deleteExpense, deleteTransfer, saveFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData, updateRevenue, updateExpense, deleteRevenue, deleteExpense, deleteTransfer, saveFinancialData } from '@/lib/storage';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -41,23 +41,12 @@ interface LogEntry {
 export default function DiarioCronologico() {
   const [filter, setFilter] = useState<LogType | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [data, setData] = useState({ 
-    accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
-  });
-
-  useEffect(() => {
-    const fetchData = async () => {
-      const financialData = await loadFinancialData();
-      setData(financialData);
-    };
-    fetchData();
-  }, []);
+  const [data, setData] = useState(() => loadFinancialData());
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  const refreshData = async () => {
-    const financialData = await loadFinancialData();
-    setData(financialData);
+  const refreshData = () => {
+    setData(loadFinancialData());
   };
 
   const logs = useMemo(() => {

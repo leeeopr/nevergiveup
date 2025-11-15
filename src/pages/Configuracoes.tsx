@@ -1,30 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Save, Upload } from "lucide-react";
-import { FinancialData } from "@/types/financial";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { loadFinancialData, saveFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData, saveFinancialData } from "@/lib/storage";
 import { importFromExcel } from "@/lib/excel";
 
 export default function Configuracoes() {
-  const [settings, setSettings] = useState({ notificationEmail: '', startDate: '' });
-  const [data, setData] = useState<FinancialData | null>(null);
+  const [settings, setSettings] = useState(loadFinancialData().settings);
 
-useEffect(() => {
-  const fetchData = async () => {
-    const financialData = await loadFinancialData();
-    setData(financialData);
-    setSettings(financialData.settings || { notificationEmail: '', startDate: '' });
-  };
-  fetchData();
-}, []);
-
-  const handleSave = async () => {
-    const loadedData = await loadFinancialData();
-    loadedData.settings = settings;
-    saveFinancialData(loadedData);
+  const handleSave = () => {
+    const data = loadFinancialData();
+    data.settings = settings;
+    saveFinancialData(data);
     toast.success("Configurações salvas com sucesso");
   };
 

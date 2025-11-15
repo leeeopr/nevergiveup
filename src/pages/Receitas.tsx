@@ -7,20 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Transaction, FinancialData } from "@/types/financial";
-import { loadFinancialData, addRevenue, updateRevenue, deleteRevenue, saveFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData, addRevenue, updateRevenue, deleteRevenue, saveFinancialData } from "@/lib/storage";
 
 export default function Receitas() {
-const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
-});
-
-useEffect(() => {
-  const fetchData = async () => {
-    const financialData = await loadFinancialData();
-    setData(financialData);
-  };
-  fetchData();
-}, []);
+  const [data, setData] = useState<FinancialData>(loadFinancialData());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRevenue, setEditingRevenue] = useState<Transaction | null>(null);
   const [formData, setFormData] = useState<Partial<Transaction>>({
@@ -37,7 +27,7 @@ useEffect(() => {
 
   const revenueCategories = data.categories.filter(c => c.type === "Receita");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.description || !formData.category || !formData.accountId || formData.amount === 0) {
@@ -66,18 +56,16 @@ useEffect(() => {
       toast.success("Receita adicionada com sucesso");
     }
 
-    const newData = await loadFinancialData();
-    setData(newData);
+    setData(loadFinancialData());
     setIsDialogOpen(false);
     setEditingRevenue(null);
     resetForm();
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (confirm("Deseja realmente excluir esta receita?")) {
       deleteRevenue(id);
-      const newData = await loadFinancialData();
-      setData(newData);
+      setData(loadFinancialData());
       toast.success("Receita excluída com sucesso");
     }
   };

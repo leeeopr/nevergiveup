@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { loadFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData } from "@/lib/storage";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 
 interface DailyTransaction {
@@ -24,21 +24,20 @@ interface DailyBalance {
 }
 
 export default function ProjecaoCaixa() {
-const [data, setData] = useState({ 
-  revenues: [], expenses: [], transfers: [], accounts: [], categories: [] 
-});
-
-useEffect(() => {
-  const fetchData = async () => {
+  const [data, setData] = useState(() => {
     try {
-      const financialData = await loadFinancialData();
-      setData(financialData);
+      return loadFinancialData();
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('Erro ao carregar dados financeiros:', error);
+      return { 
+        revenues: [], 
+        expenses: [], 
+        transfers: [], 
+        accounts: [], 
+        categories: [] 
+      };
     }
-  };
-  fetchData();
-}, []);
+  });
   
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(

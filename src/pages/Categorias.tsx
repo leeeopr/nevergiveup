@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,20 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Category, FinancialData, CategoryType } from "@/types/financial";
-import { loadFinancialData, saveFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData, saveFinancialData } from "@/lib/storage";
 
 export default function Categorias() {
-const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
-});
-
-useEffect(() => {
-  const fetchData = async () => {
-    const financialData = await loadFinancialData();
-    setData(financialData);
-  };
-  fetchData();
-}, []);
+  const [data, setData] = useState<FinancialData>(loadFinancialData());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [formData, setFormData] = useState<Partial<Category>>({

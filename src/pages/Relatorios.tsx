@@ -1,13 +1,13 @@
 import { Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { loadFinancialData } from "@/lib/googleSheets";
+import { loadFinancialData } from "@/lib/storage";
 import { exportToExcel } from "@/lib/excel";
 import { toast } from "sonner";
 
 export default function Relatorios() {
-  const handleExportExcel = async () => {
+  const handleExportExcel = () => {
     try {
-      const data = await loadFinancialData();
+      const data = loadFinancialData();
       exportToExcel(data);
       toast.success("Planilha exportada com sucesso!");
     } catch (error) {
