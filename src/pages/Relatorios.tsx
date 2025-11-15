@@ -5,26 +5,9 @@ import { exportToExcel } from "@/lib/excel";
 import { toast } from "sonner";
 
 export default function Relatorios() {
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
-      const [data, setData] = useState<FinancialData | null>(null);
-
-useEffect(() => {
-  const fetchData = async () => {
-    const financialData = await loadFinancialData();
-    setData(financialData);
-  };
-  fetchData();
-}, []);
-
-const handleExportExcel = async () => {
-  try {
-    const data = await loadFinancialData();
-    // ... resto do código
-  } catch (error) {
-    toast.error("Erro ao carregar dados para exportação");
-  }
-};
+      const data = await loadFinancialData();
       exportToExcel(data);
       toast.success("Planilha exportada com sucesso!");
     } catch (error) {

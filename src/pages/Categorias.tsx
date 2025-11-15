@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { loadFinancialData, saveFinancialData } from "@/lib/googleSheets";
 
 export default function Categorias() {
 const [data, setData] = useState<FinancialData>({ 
-  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: {} 
+  accounts: [], revenues: [], expenses: [], transfers: [], categories: [], settings: { notificationEmail: '', startDate: '' } 
 });
 
 useEffect(() => {

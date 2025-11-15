@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Save, Upload } from "lucide-react";
+import { FinancialData } from "@/types/financial";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,22 +9,22 @@ import { loadFinancialData, saveFinancialData } from "@/lib/googleSheets";
 import { importFromExcel } from "@/lib/excel";
 
 export default function Configuracoes() {
-  const [settings, setSettings] = useState({});
-const [data, setData] = useState<FinancialData | null>(null);
+  const [settings, setSettings] = useState({ notificationEmail: '', startDate: '' });
+  const [data, setData] = useState<FinancialData | null>(null);
 
 useEffect(() => {
   const fetchData = async () => {
     const financialData = await loadFinancialData();
     setData(financialData);
-    setSettings(financialData.settings || {});
+    setSettings(financialData.settings || { notificationEmail: '', startDate: '' });
   };
   fetchData();
 }, []);
 
-  const handleSave = () => {
-    const data = loadFinancialData();
-    data.settings = settings;
-    saveFinancialData(data);
+  const handleSave = async () => {
+    const loadedData = await loadFinancialData();
+    loadedData.settings = settings;
+    saveFinancialData(loadedData);
     toast.success("Configurações salvas com sucesso");
   };
 
