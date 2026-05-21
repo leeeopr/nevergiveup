@@ -29,10 +29,10 @@ export const structuralExpensesService = {
     const supabase = getSupabase()
     if (!supabase) return getLocalExpenses('anon')
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
+    const { data: { user } } = await supabase.auth.getUser()
+    const userId = user?.id || 'anon'
 
+    try {
       const { data, error } = await supabase
         .from('structural_expenses')
         .select('*')
@@ -49,34 +49,31 @@ export const structuralExpensesService = {
       return data || []
     } catch (err) {
       console.warn('Using fallback localStorage due to database fetch error:', err)
-      return getLocalExpenses('anon')
+      return getLocalExpenses(userId)
     }
   },
 
   async createExpense(expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<StructuralExpense> {
     const supabase = getSupabase()
-    
-    const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11)
+    const { data: { user } } = supabase ? await supabase.auth.getUser() : { data: { user: null } }
+    const userId = user?.id || 'anon'
+
     const newExpense: StructuralExpense = {
       ...expense,
-      id: tempId,
-      user_id: 'anon',
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
+      user_id: userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
 
     if (!supabase) {
-      const local = getLocalExpenses('anon')
+      const local = getLocalExpenses(userId)
       local.unshift(newExpense)
-      saveLocalExpenses('anon', local)
+      saveLocalExpenses(userId, local)
       return newExpense
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
-      newExpense.user_id = userId
-
       const { data, error } = await supabase
         .from('structural_expenses')
         .insert({
@@ -104,7 +101,6 @@ export const structuralExpensesService = {
       return data
     } catch (err) {
       console.warn('Database insert failed, using fallback localStorage:', err)
-      const userId = newExpense.user_id
       const local = getLocalExpenses(userId)
       local.unshift(newExpense)
       saveLocalExpenses(userId, local)
@@ -114,9 +110,11 @@ export const structuralExpensesService = {
 
   async updateExpense(id: string, expense: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>): Promise<StructuralExpense> {
     const supabase = getSupabase()
+    const { data: { user } } = supabase ? await supabase.auth.getUser() : { data: { user: null } }
+    const userId = user?.id || 'anon'
 
     if (!supabase) {
-      const local = getLocalExpenses('anon')
+      const local = getLocalExpenses(userId)
       const index = local.findIndex(e => e.id === id)
       if (index === -1) throw new Error('Despesa estrutural não encontrada')
       
@@ -126,14 +124,11 @@ export const structuralExpensesService = {
         updated_at: new Date().toISOString()
       }
       local[index] = updated
-      saveLocalExpenses('anon', local)
+      saveLocalExpenses(userId, local)
       return updated
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
-
       const { data, error } = await supabase
         .from('structural_expenses')
         .update({
@@ -164,7 +159,7 @@ export const structuralExpensesService = {
       return data
     } catch (err) {
       console.warn('Database update failed, using fallback localStorage:', err)
-      const local = getLocalExpenses('anon')
+      const local = getLocalExpenses(userId)
       const index = local.findIndex(e => e.id === id)
       if (index === -1) throw new Error('Despesa estrutural não encontrada')
       const updated = {
@@ -173,25 +168,24 @@ export const structuralExpensesService = {
         updated_at: new Date().toISOString()
       }
       local[index] = updated
-      saveLocalExpenses('anon', local)
+      saveLocalExpenses(userId, local)
       return updated
     }
   },
 
   async deleteExpense(id: string): Promise<void> {
     const supabase = getSupabase()
+    const { data: { user } } = supabase ? await supabase.auth.getUser() : { data: { user: null } }
+    const userId = user?.id || 'anon'
 
     if (!supabase) {
-      const local = getLocalExpenses('anon')
+      const local = getLocalExpenses(userId)
       const filtered = local.filter(e => e.id !== id)
-      saveLocalExpenses('anon', filtered)
+      saveLocalExpenses(userId, filtered)
       return
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
-
       const { error } = await supabase
         .from('structural_expenses')
         .delete()
@@ -208,9 +202,9 @@ export const structuralExpensesService = {
       }
     } catch (err) {
       console.warn('Database delete failed, using fallback localStorage:', err)
-      const local = getLocalExpenses('anon')
+      const local = getLocalExpenses(userId)
       const filtered = local.filter(e => e.id !== id)
-      saveLocalExpenses('anon', filtered)
+      saveLocalExpenses(userId, filtered)
     }
   }
 }

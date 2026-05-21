@@ -54,7 +54,6 @@ export function StructuralTab({ addTrigger = 0 }: { addTrigger?: number }) {
 
   useEffect(() => {
     if (addTrigger > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsAddOpen(true)
     }
   }, [addTrigger])

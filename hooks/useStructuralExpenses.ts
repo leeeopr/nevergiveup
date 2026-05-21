@@ -24,7 +24,6 @@ export function useStructuralExpenses() {
 
   useEffect(() => {
     if (!authLoading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       refresh()
     }
   }, [refresh, authLoading])

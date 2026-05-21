@@ -121,7 +121,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!supabase) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState(prev => ({ ...prev, loading: false, isIdentityResolved: true }))
       return
     }
@@ -141,14 +140,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     // Initial check
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        resolveAuthState(session)
-      })
-      .catch((err) => {
-        console.warn('Initial session lookup failed safely (fallback active):', err)
-        resolveAuthState(null)
-      })
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      resolveAuthState(session)
+    })
 
     return () => {
       subscription.unsubscribe()

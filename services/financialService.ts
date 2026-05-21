@@ -10,60 +10,45 @@ export const financialService = {
     const startDate = format(startOfMonth(new Date(year, month)), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(new Date(year, month)), 'yyyy-MM-dd')
 
-    try {
-      const { data, error } = await supabase
-        .from('financial_movements')
-        .select('*')
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false })
+    const { data, error } = await supabase
+      .from('financial_movements')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false })
 
-      if (error) throw error
-      return data || []
-    } catch (err) {
-      console.warn('Failed to retrieve movements by month due to network/configuration issue:', err)
-      return []
-    }
+    if (error) throw error
+    return data || []
   },
 
   async getAllMovements(): Promise<FinancialMovement[]> {
     const supabase = getSupabase()
     if (!supabase) return []
 
-    try {
-      const { data, error } = await supabase
-        .from('financial_movements')
-        .select('*')
-        .order('date', { ascending: true })
+    const { data, error } = await supabase
+      .from('financial_movements')
+      .select('*')
+      .order('date', { ascending: true })
 
-      if (error) throw error
-      return data || []
-    } catch (err) {
-      console.warn('Failed to retrieve all movements due to network/configuration issue:', err)
-      return []
-    }
+    if (error) throw error
+    return data || []
   },
 
   async getOpeningBalance(beforeDate: string): Promise<number> {
     const supabase = getSupabase()
     if (!supabase) return 0
 
-    try {
-      const { data, error } = await supabase
-        .from('financial_movements')
-        .select('amount, type')
-        .lt('date', beforeDate)
+    const { data, error } = await supabase
+      .from('financial_movements')
+      .select('amount, type')
+      .lt('date', beforeDate)
 
-      if (error) throw error
-      
-      return (data || []).reduce((acc, m) => {
-        const amount = Number(m.amount)
-        return m.type === 'entrada' ? acc + amount : acc - amount
-      }, 0)
-    } catch (err) {
-      console.warn('Failed to retrieve opening balance due to network/configuration issue:', err)
-      return 0
-    }
+    if (error) throw error
+    
+    return (data || []).reduce((acc, m) => {
+      const amount = Number(m.amount)
+      return m.type === 'entrada' ? acc + amount : acc - amount
+    }, 0)
   },
 
   async insertMovement(movement: Omit<FinancialMovement, 'id' | 'created_at' | 'user_id'>): Promise<FinancialMovement> {
@@ -147,18 +132,13 @@ export const financialService = {
     const supabase = getSupabase()
     if (!supabase) return []
 
-    try {
-      const { data, error } = await supabase
-        .from('financial_movements')
-        .select('*')
-        .gte('date', startDate)
-        .lte('date', endDate)
+    const { data, error } = await supabase
+      .from('financial_movements')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate)
 
-      if (error) throw error
-      return data || []
-    } catch (err) {
-      console.warn('Failed to retrieve movements by range due to network/configuration issue:', err)
-      return []
-    }
+    if (error) throw error
+    return data || []
   }
 }
