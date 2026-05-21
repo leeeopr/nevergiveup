@@ -19,6 +19,7 @@ export function EditMovementSheet({ movement, onClose, onSuccess }: EditMovement
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { hasPermission } = useAuth()
 
   const canUpdate = hasPermission('movements:update')
@@ -28,12 +29,13 @@ export function EditMovementSheet({ movement, onClose, onSuccess }: EditMovement
     if (!movement || !canDelete) return
     try {
       setDeleting(true)
+      setDeleteError(null)
       await financialService.deleteMovement(movement.id)
       onSuccess()
       onClose()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete failed:', error)
-      alert('Erro ao excluir.')
+      setDeleteError(error.message || 'Erro ao excluir.')
     } finally {
       setDeleting(false)
     }
@@ -131,6 +133,13 @@ export function EditMovementSheet({ movement, onClose, onSuccess }: EditMovement
             <p className="text-silver-brushed/30 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] mb-10 sm:mb-16 leading-relaxed max-w-[240px] sm:max-w-[280px]">
               Esta remoção é definitiva no ledger local e impactará o patrimônio patrimonial projetado.
             </p>
+
+            {deleteError && (
+              <div className="p-4 mb-6 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold leading-relaxed max-w-sm mx-auto flex items-center gap-3">
+                <span className="shrink-0 select-none">⚠️</span>
+                <span>{deleteError}</span>
+              </div>
+            )}
             
             <div className="flex flex-col w-full gap-3 sm:gap-4 max-w-sm mx-auto">
               <button 

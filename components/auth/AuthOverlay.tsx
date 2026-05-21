@@ -14,12 +14,14 @@ export function AuthOverlay() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submissionLoading, setSubmissionLoading] = useState(false)
+  const [notification, setNotification] = useState<{ type: 'error' | 'success'; message: string } | null>(null)
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!supabase) return
     
     setSubmissionLoading(true)
+    setNotification(null)
     try {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
@@ -27,7 +29,10 @@ export function AuthOverlay() {
           password,
         })
         if (error) throw error
-        alert('Verifique seu e-mail para confirmar o cadastro!')
+        setNotification({ 
+          type: 'success', 
+          message: 'Cadastro registrado com sucesso! Verifique sua caixa de e-mail para confirmar a conta.' 
+        })
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -36,7 +41,10 @@ export function AuthOverlay() {
         if (error) throw error
       }
     } catch (error: any) {
-      alert(error.message)
+      setNotification({ 
+        type: 'error', 
+        message: error.message || 'Credenciais inválidas ou falha na autenticação.' 
+      })
     } finally {
       setSubmissionLoading(false)
     }
@@ -69,6 +77,19 @@ export function AuthOverlay() {
               ? 'Cadastre-se para começar a gerenciar suas finanças.' 
               : 'Entre com seus dados para acessar suas métricas.'}
           </p>
+
+          {notification && (
+            <div className={`p-4 mb-6 rounded-2xl text-left border text-xs leading-relaxed flex items-start gap-3 ${
+              notification.type === 'error' 
+                ? 'bg-rose-500/10 border-rose-500/20 text-rose-300' 
+                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+            }`}>
+              <div className="text-sm shrink-0 select-none">
+                {notification.type === 'error' ? '⚠️' : '✉️'}
+              </div>
+              <div className="font-semibold">{notification.message}</div>
+            </div>
+          )}
 
           <form onSubmit={handleAuth} className="space-y-4 text-left">
             <div className="space-y-1">

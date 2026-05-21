@@ -25,5 +25,5 @@ export const getSupabase = () => {
   return supabaseInstance
 }
 
-// Global reference for simple usage
-export const supabase = typeof window !== 'undefined' ? getSupabase() : null
+// Global reference for simple usage (fully isomorphic)
+export const supabase = getSupabase()
