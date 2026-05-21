@@ -188,7 +188,7 @@ export function AuthOverlay() {
             )}
 
             {/* 5. Server Auth / Session FSM Error Banner */}
-            {authErrorMessage && (
+            {authErrorMessage && authErrorType !== 'ENV_MISSING' && (
               <motion.div 
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
