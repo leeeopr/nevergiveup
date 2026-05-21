@@ -16,14 +16,43 @@ export const getSupabase = () => {
     supabaseUrl.startsWith('https://')
 
   if (!isValid) {
-    console.error('CRITICAL: Supabase environment variables are missing or invalid.')
-    console.error('Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to the project Secrets.')
+    if (typeof window !== 'undefined') {
+      console.error('[SUPABASE_INIT_FAILURE]', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseAnonKey,
+        urlIsPlaceholder: supabaseUrl ? supabaseUrl.includes('placeholder') : true,
+        startsWithHttps: supabaseUrl ? supabaseUrl.startsWith('https://') : false,
+        isProduction: process.env.NODE_ENV === 'production',
+        origin: window.location.origin
+      })
+    }
     return null
   }
 
-  supabaseInstance = createClient(supabaseUrl!, supabaseAnonKey!)
-  return supabaseInstance
+  try {
+    supabaseInstance = createClient(supabaseUrl!, supabaseAnonKey!)
+    return supabaseInstance
+  } catch (error) {
+    console.error('[SUPABASE_CLIENT_CREATION_FAILED]', error)
+    return null
+  }
 }
 
-// Global reference for simple usage (fully isomorphic)
-export const supabase = getSupabase()
+// Global reference for simple usage (fully isomorphic via lazy getter Proxy)
+export const supabase = typeof window !== 'undefined'
+  ? new Proxy({} as SupabaseClient, {
+      get(target, prop, receiver) {
+        const client = getSupabase()
+        if (!client) {
+          console.warn(`[SUPABASE_LAZY_WARNING] Attempted to access property "${String(prop)}" but the client is not initialized.`)
+          return undefined
+        }
+        const val = Reflect.get(client, prop, receiver)
+        if (typeof val === 'function') {
+          return val.bind(client)
+        }
+        return val
+      }
+    })
+  : null
+

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { motion, AnimatePresence } from 'motion/react'
 import { LogIn, Sparkles, Shield, Wallet, Mail, Lock, UserPlus, Loader2 } from 'lucide-react'
@@ -18,7 +18,14 @@ export function AuthOverlay() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!supabase) return
+    const supabase = getSupabase()
+    if (!supabase) {
+      setNotification({
+        type: 'error',
+        message: 'A conexão com o banco de dados (Supabase) não foi inicializada. Certifique-se de que as variáveis NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY foram preenchidas e configuradas em seu ambiente.'
+      })
+      return
+    }
     
     setSubmissionLoading(true)
     setNotification(null)

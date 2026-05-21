@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { AuthState, UserProfile, UserRole, Permission } from '@/types/auth'
 import { Session, User } from '@supabase/supabase-js'
 
@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const OWNER_PERMISSIONS = ROLE_PERMISSIONS['admin']
 
   const ensureProfileSync = useCallback(async (user: User): Promise<UserProfile | null> => {
+    const supabase = getSupabase()
     if (!supabase) return null
     
     try {
@@ -120,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [ensureProfileSync, OWNER_PERMISSIONS])
 
   useEffect(() => {
+    const supabase = getSupabase()
     if (!supabase) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState(prev => ({ ...prev, loading: false, isIdentityResolved: true }))
@@ -156,6 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [resolveAuthState])
 
   const signOut = async () => {
+    const supabase = getSupabase()
     if (!supabase) return
     setState(prev => ({ ...prev, loading: true, isIdentityResolved: false }))
     await supabase.auth.signOut()
