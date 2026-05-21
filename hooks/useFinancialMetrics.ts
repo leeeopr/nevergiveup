@@ -31,6 +31,7 @@ export function useFinancialMetrics(year: number, month: number) {
 
   useEffect(() => {
     if (!authLoading) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       refresh()
     }
   }, [refresh, authLoading])
