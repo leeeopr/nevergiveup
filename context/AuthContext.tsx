@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { getSupabase, isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { getSupabase, isSupabaseConfigured, supabase, validateSupabaseEnv } from '@/lib/supabase'
 import { AuthState, UserProfile, UserRole, Permission, AuthFsmState, TypedAuthError } from '@/types/auth'
 import { Session, User } from '@supabase/supabase-js'
 
@@ -192,7 +192,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (state.isHydrating) return
 
-    if (!isSupabaseConfigured()) {
+    const envVerify = validateSupabaseEnv()
+    if (!envVerify.isValid) {
       setState(prev => ({
         ...prev,
         fsmState: 'db-unavailable',
@@ -201,13 +202,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading: false,
         isIdentityResolved: true,
         authErrorType: 'ENV_MISSING',
-        authErrorMessage: 'Chaves de credenciais de banco de dados Supabase não encontradas. Cadastre NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+        authErrorMessage: envVerify.errorMessage || 'Chaves de credenciais de banco de dados Supabase ausentes ou inválidas.'
       }))
       return
     }
 
-    const client = getSupabase()
-    if (!client) {
+    let client
+    try {
+      client = getSupabase()
+    } catch (err: any) {
       setState(prev => ({
         ...prev,
         fsmState: 'db-unavailable',
@@ -216,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading: false,
         isIdentityResolved: true,
         authErrorType: 'DB_UNAVAILABLE',
-        authErrorMessage: 'Erro crítico de compilação do cliente do banco de dados.'
+        authErrorMessage: `Falha crítica de carga do cliente: ${err.message || err}`
       }))
       return
     }
@@ -271,6 +274,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.isHydrating, resolveAuthState])
 
+  // Helper helper to wrap asynchronous task with accurate connection timeouts
+  function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMsg: string): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(errorMsg)), timeoutMs)
+      )
+    ])
+  }
+
   const signInWithEmail = async (email: string, password: string) => {
     setState(prev => ({
       ...prev,
@@ -293,25 +306,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setState(prev => ({ ...prev, fsmState: 'connecting' }))
-    const client = getSupabase()
-    if (!client) {
-      const msg = 'Erro crítico de conexão: banco de dados offline.'
+    const envVerify = validateSupabaseEnv()
+    if (!envVerify.isValid) {
+      const msg = envVerify.errorMessage || 'O cliente do Supabase não pôde ser iniciado por erro de configuração.'
       setState(prev => ({
         ...prev,
         fsmState: 'db-unavailable',
-        authErrorType: 'DB_UNAVAILABLE',
+        authErrorType: 'ENV_MISSING',
         authErrorMessage: msg,
         isAuthLoading: false
       }))
       throw new Error(msg)
     }
 
+    const client = getSupabase()
     try {
       setState(prev => ({ ...prev, fsmState: 'authenticating' }))
-      const { data, error } = await client.auth.signInWithPassword({
-        email,
-        password
-      })
+      
+      const { data, error } = await withTimeout(
+        client.auth.signInWithPassword({ email, password }),
+        15000,
+        'O servidor do Supabase demorou muito para responder (Tempo Limite de 15 segundos Excedido). Pode haver instabilidade de conexão.'
+      )
 
       if (error) throw error
 
@@ -319,12 +335,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await resolveAuthState(data.session, 'authenticated')
       }
     } catch (err: any) {
-      const msg = err.message || 'Erro deconhecido ao tentar acessar.'
+      const msg = err.message || 'Erro desconhecido ao tentar acessar.'
       let errorType: TypedAuthError = 'UNKNOWN_ERROR'
       let targetFsm: AuthFsmState = 'idle'
 
-      // Check for distinct categories
-      if (
+      if (msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('excedido')) {
+        errorType = 'NETWORK_FAILURE'
+        targetFsm = 'timeout'
+      } else if (
         msg.toLowerCase().includes('invalid') || 
         msg.toLowerCase().includes('credentials') || 
         msg.toLowerCase().includes('password') || 
@@ -378,25 +396,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setState(prev => ({ ...prev, fsmState: 'connecting' }))
-    const client = getSupabase()
-    if (!client) {
-      const msg = 'Erro crítico de conexão: banco de dados offline.'
+    const envVerify = validateSupabaseEnv()
+    if (!envVerify.isValid) {
+      const msg = envVerify.errorMessage || 'O cliente do Supabase não pôde ser iniciado por erro de configuração.'
       setState(prev => ({
         ...prev,
         fsmState: 'db-unavailable',
-        authErrorType: 'DB_UNAVAILABLE',
+        authErrorType: 'ENV_MISSING',
         authErrorMessage: msg,
         isAuthLoading: false
       }))
       throw new Error(msg)
     }
 
+    const client = getSupabase()
     try {
       setState(prev => ({ ...prev, fsmState: 'authenticating' }))
-      const { data, error } = await client.auth.signUp({
-        email,
-        password
-      })
+      
+      const { data, error } = await withTimeout(
+        client.auth.signUp({ email, password }),
+        15000,
+        'O servidor do Supabase demorou muito para responder (Tempo Limite de 15 segundos Excedido).'
+      )
 
       if (error) throw error
 
@@ -412,7 +433,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let errorType: TypedAuthError = 'UNKNOWN_ERROR'
       let targetFsm: AuthFsmState = 'idle'
 
-      if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered') || msg.toLowerCase().includes('uso')) {
+      if (msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('excedido')) {
+        errorType = 'NETWORK_FAILURE'
+        targetFsm = 'timeout'
+      } else if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered') || msg.toLowerCase().includes('uso')) {
         errorType = 'INVALID_CREDENTIALS'
         targetFsm = 'invalid-credentials'
       } else if (
@@ -436,8 +460,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    const client = getSupabase()
-    if (!client) return
+    let client
+    try {
+      client = getSupabase()
+    } catch {
+      // safe fallback if unconfigured
+      await resolveAuthState(null, 'idle')
+      return
+    }
 
     setState(prev => ({ 
       ...prev, 
@@ -448,7 +478,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }))
     
     try {
-      await client.auth.signOut()
+      await withTimeout(client.auth.signOut(), 8000, 'Signout timeout')
     } catch (err) {
       console.error('Signout failed safely:', err)
     } finally {

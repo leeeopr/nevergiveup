@@ -17,7 +17,7 @@ import { StructuralTab } from '@/components/metrics/StructuralTab'
 import { DailyBalanceHeader } from '@/components/metrics/DailyBalanceHeader'
 import { CobrancasSummary } from '@/components/metrics/CobrancasSummary'
 import { RollingBalanceEngine } from '@/services/RollingBalanceEngine'
-import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock } from 'lucide-react'
+import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock, Activity, RotateCcw } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '@/context/AuthContext'
 
@@ -26,24 +26,6 @@ export default function MetricsPage() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState<'metrics' | 'movements' | 'progression' | 'structural'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
-
-  const [offlineFallbackActive, setOfflineFallbackActive] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return !!(window as any).__isOfflineFallbackActive
-    }
-    return false
-  })
-
-  useEffect(() => {
-    const handleFallbackChange = (e: Event) => {
-      const active = (e as CustomEvent).detail?.active
-      setOfflineFallbackActive(!!active)
-    }
-    window.addEventListener('offline-fallback-changed', handleFallbackChange)
-    return () => {
-      window.removeEventListener('offline-fallback-changed', handleFallbackChange)
-    }
-  }, [])
 
   const { metrics, loading, error, movements, refresh } = useFinancialMetrics(
     currentDate.getFullYear(),
@@ -60,19 +42,97 @@ export default function MetricsPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen p-6 flex items-center justify-center bg-velvet-deep">
-        <div className="bg-velvet-soft border border-silver-brushed/10 p-12 rounded-[40px] text-center max-w-sm shadow-2xl">
-          <AlertCircle size={48} className="text-rose-500 mx-auto mb-6 opacity-80" />
-          <h2 className="text-2xl font-bold mb-3 tracking-tight">Interrupção de Sistema</h2>
-          <p className="text-sm text-silver-brushed/60 mb-8 leading-relaxed font-medium">
-            Falha na sincronização dos dados executivos. Restabeleça a conexão para prosseguir.
-          </p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full bg-silver-brushed text-velvet-deep font-black uppercase tracking-widest py-4 rounded-2xl shadow-xl transition-all active:scale-95 hover:bg-white"
-          >
-            Reiniciar Interface
-          </button>
+      <main className="min-h-screen p-6 flex flex-col items-center justify-center bg-zinc-950 text-zinc-100">
+        <div className="w-full max-w-xl bg-zinc-900 border border-zinc-800 rounded-[32px] p-8 md:p-12 shadow-2xl relative overflow-hidden">
+          {/* Decorative background glows */}
+          <div className="absolute -top-32 -left-32 w-64 h-64 bg-rose-500/10 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-amber-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+          <div className="relative text-center mb-8">
+            <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <AlertCircle className="text-rose-500" size={32} />
+            </div>
+            <h2 className="text-2xl font-black tracking-tight text-zinc-100">Interrupção de Sistema</h2>
+            <p className="text-zinc-400 text-sm mt-2 leading-relaxed font-medium">
+              Ocorreu uma falha crítica ao tentar ler as métricas e o histórico operacional do banco de dados. Refira-se aos diagnósticos de integridade abaixo.
+            </p>
+          </div>
+
+          {/* Bento Health Diagnostics Grid */}
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            {/* 1. Database Connection */}
+            <div className="bg-zinc-800/40 border border-zinc-800 p-4 rounded-2xl text-left">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Database size={16} className={isDbConnected ? "text-emerald-400" : "text-rose-500"} />
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Conexão de Banco</span>
+              </div>
+              <p className="text-xs font-semibold text-zinc-200">
+                {isDbConnected ? "Supabase Ativo" : "Supabase Inativo"}
+              </p>
+            </div>
+
+            {/* 2. Backend Health State */}
+            <div className="bg-zinc-800/40 border border-zinc-800 p-4 rounded-2xl text-left">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Activity size={16} className={isDbConnected ? "text-emerald-400 animate-pulse" : "text-rose-500"} />
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Integridade Backend</span>
+              </div>
+              <p className="text-xs font-semibold text-zinc-200">
+                {isDbConnected ? "Operando Normal" : "Disrupção Detetada"}
+              </p>
+            </div>
+
+            {/* 3. Auth Availability */}
+            <div className="bg-zinc-800/40 border border-zinc-800 p-4 rounded-2xl text-left">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Lock size={16} className={user ? "text-emerald-400" : "text-amber-500"} />
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Status de Autenticação</span>
+              </div>
+              <p className="text-xs font-semibold text-zinc-200 truncate">
+                {user ? user.email : "Desconectado"}
+              </p>
+            </div>
+
+            {/* 4. Network State */}
+            <div className="bg-zinc-800/40 border border-zinc-800 p-4 rounded-2xl text-left">
+              <div className="flex items-center gap-2 mb-1.5">
+                {!isOffline ? (
+                  <Wifi size={16} className="text-emerald-400" />
+                ) : (
+                  <WifiOff size={16} className="text-rose-500" />
+                )}
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Conexão de Rede</span>
+              </div>
+              <p className="text-xs font-semibold text-zinc-200">
+                {!isOffline ? "Acesso à Rede Ativo" : "Rede Indisponível"}
+              </p>
+            </div>
+          </div>
+
+          {/* Detailed Diagnostic Log Code block */}
+          <div className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-4 mb-8 text-left">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 block mb-2 font-mono">Erro Retornado (Supabase SOT):</span>
+            <code className="text-zinc-300 font-mono text-xs leading-relaxed break-words block whitespace-pre-wrap">
+              {error.message || String(error)}
+            </code>
+          </div>
+
+          {/* Action Button Controls */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => refresh()}
+              className="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 font-bold py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+            >
+              <RotateCcw size={16} />
+              Tentar Novamente
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold py-4 rounded-2xl transition-all active:scale-[0.98] text-sm border border-zinc-800/80 cursor-pointer"
+            >
+              Recarregar Página
+            </button>
+          </div>
         </div>
       </main>
     )
@@ -137,26 +197,7 @@ export default function MetricsPage() {
         </div>
       </div>
 
-      {/* Offline Backup Mode Warning Notification */}
-      {offlineFallbackActive && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8 bg-amber-500/10 border border-amber-500/20 rounded-[24px] p-5 text-left flex gap-4 items-center shadow-lg"
-        >
-          <div className="w-10 h-10 bg-amber-500/20 border border-amber-500/20 rounded-xl flex items-center justify-center shrink-0">
-            <WifiOff className="text-amber-400" size={18} />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              Modo de Backup Offline Ativo
-            </h3>
-            <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed font-semibold">
-              O banco de dados do Supabase está inacessível ou pendente de configuração em Secrets. Para garantir que seu trabalho nunca seja perdido, salvamos todas as suas métricas e movimentações no seu navegador com segurança!
-            </p>
-          </div>
-        </motion.div>
-      )}
+
 
       {/* Immersive Month Selector */}
       <MonthSelector currentDate={currentDate} onChange={setCurrentDate} />
