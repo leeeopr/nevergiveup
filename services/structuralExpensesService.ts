@@ -1,138 +1,162 @@
 import { getSupabase } from '@/lib/supabase'
 import { StructuralExpense } from '@/types/structural'
 
-const LOCAL_STORAGE_KEY = 'structural_expenses_cache'
+const LOCAL_EXPENSES_KEY = 'structural_expenses_offline'
 
-// Helper for local storage parsing
-function getLocalExpenses(userId: string): StructuralExpense[] {
+const isNetworkError = (error: any): boolean => {
+  if (!error) return false
+  const errorStr = String(error.message || error.description || error || '').toLowerCase()
+  return (
+    errorStr.includes('failed to fetch') ||
+    errorStr.includes('networkerror') ||
+    errorStr.includes('network error') ||
+    errorStr.includes('attempting to fetch resource') ||
+    errorStr.includes('fetch') ||
+    errorStr.includes('load') ||
+    errorStr.includes('dns') ||
+    errorStr.includes('cors') ||
+    errorStr.includes('origin') ||
+    errorStr.includes('connection failed') ||
+    errorStr.includes('offline') ||
+    error.name === 'TypeError' ||
+    error.status === 0 ||
+    error.status === 502 ||
+    error.status === 503 ||
+    error.status === 504 ||
+    error.crossorigin === 'anonymous'
+  )
+}
+
+// Broadcast system for offline fallback status
+const notifyOfflineFallback = (active: boolean) => {
+  if (typeof window !== 'undefined') {
+    (window as any).__isOfflineFallbackActive = active
+    window.dispatchEvent(new CustomEvent('offline-fallback-changed', { detail: { active } }))
+  }
+}
+
+export const getLocalExpenses = (): StructuralExpense[] => {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(`${LOCAL_STORAGE_KEY}_${userId}`)
-    return raw ? JSON.parse(raw) : []
-  } catch (e) {
-    console.error('Local Storage read error:', e)
+    const data = localStorage.getItem(LOCAL_EXPENSES_KEY)
+    return data ? JSON.parse(data) : []
+  } catch (err) {
+    console.warn('Failed to parse local structural expenses:', err)
     return []
   }
 }
 
-function saveLocalExpenses(userId: string, expenses: StructuralExpense[]) {
+export const saveLocalExpenses = (expenses: StructuralExpense[]) => {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_${userId}`, JSON.stringify(expenses))
-  } catch (e) {
-    console.error('Local Storage write error:', e)
+    localStorage.setItem(LOCAL_EXPENSES_KEY, JSON.stringify(expenses))
+  } catch (err) {
+    console.error('Failed to save local structural expenses:', err)
   }
 }
 
 export const structuralExpensesService = {
   async getExpenses(): Promise<StructuralExpense[]> {
-    const supabase = getSupabase()
-    if (!supabase) return getLocalExpenses('anon')
-
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Supabase client unconfigured')
+      }
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        throw new Error('Você precisa estar logado para carregar as despesas estruturais.')
+      }
 
       const { data, error } = await supabase
         .from('structural_expenses')
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (error) {
-        // Code 42P01 means Postgres "relation does not exist" - i.e. table not migrated yet
-        if (error.code === '42P01') {
-          console.warn('Supabase table "structural_expenses" does not exist. Using localStorage fallback.')
-          return getLocalExpenses(userId)
-        }
-        throw error
+      if (error) throw error
+
+      if (data) {
+        saveLocalExpenses(data)
       }
+      notifyOfflineFallback(false)
       return data || []
     } catch (err) {
-      console.warn('Using fallback localStorage due to database fetch error:', err)
-      return getLocalExpenses('anon')
+      if (isNetworkError(err) || !getSupabase()) {
+        console.warn('structuralExpensesService: network unavailable, parsing from backup cache.')
+        notifyOfflineFallback(true)
+        return getLocalExpenses()
+      }
+      throw err
     }
   },
 
   async createExpense(expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<StructuralExpense> {
-    const supabase = getSupabase()
-    
-    const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11)
-    const newExpense: StructuralExpense = {
+    const localId = 'local_exp_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now()
+    const tempExpense: StructuralExpense = {
       ...expense,
-      id: tempId,
-      user_id: 'anon',
+      id: localId,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-
-    if (!supabase) {
-      const local = getLocalExpenses('anon')
-      local.unshift(newExpense)
-      saveLocalExpenses('anon', local)
-      return newExpense
+      updated_at: new Date().toISOString(),
+      user_id: 'local_user'
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
-      newExpense.user_id = userId
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Supabase client unconfigured')
+      }
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        throw new Error('Você precisa estar logado para criar uma despesa estrutural.')
+      }
 
       const { data, error } = await supabase
         .from('structural_expenses')
         .insert({
-          id: newExpense.id,
-          title: newExpense.title,
-          amount: Number(newExpense.amount),
-          category: newExpense.category,
-          recurrence: newExpense.recurrence,
-          priority: newExpense.priority,
-          description: newExpense.description,
-          user_id: userId
+          title: expense.title,
+          amount: Number(expense.amount),
+          category: expense.category,
+          recurrence: expense.recurrence,
+          priority: expense.priority,
+          description: expense.description,
+          user_id: user.id
         })
         .select()
         .single()
 
-      if (error) {
-        if (error.code === '42P01') {
-          const local = getLocalExpenses(userId)
-          local.unshift(newExpense)
-          saveLocalExpenses(userId, local)
-          return newExpense
-        }
-        throw error
-      }
+      if (error) throw error
+
+      const local = getLocalExpenses()
+      local.unshift(data)
+      saveLocalExpenses(local)
+      notifyOfflineFallback(false)
+
       return data
     } catch (err) {
-      console.warn('Database insert failed, using fallback localStorage:', err)
-      const userId = newExpense.user_id
-      const local = getLocalExpenses(userId)
-      local.unshift(newExpense)
-      saveLocalExpenses(userId, local)
-      return newExpense
+      if (isNetworkError(err) || !getSupabase()) {
+        console.warn('structuralExpensesService: saved expense locally.')
+        notifyOfflineFallback(true)
+        const local = getLocalExpenses()
+        local.unshift(tempExpense)
+        saveLocalExpenses(local)
+        return tempExpense
+      }
+      throw err
     }
   },
 
   async updateExpense(id: string, expense: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>): Promise<StructuralExpense> {
-    const supabase = getSupabase()
-
-    if (!supabase) {
-      const local = getLocalExpenses('anon')
-      const index = local.findIndex(e => e.id === id)
-      if (index === -1) throw new Error('Despesa estrutural não encontrada')
-      
-      const updated = {
-        ...local[index],
-        ...expense,
-        updated_at: new Date().toISOString()
-      }
-      local[index] = updated
-      saveLocalExpenses('anon', local)
-      return updated
-    }
-
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Supabase client unconfigured')
+      }
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        throw new Error('Você precisa estar logado para editar uma despesa estrutural.')
+      }
 
       const { data, error } = await supabase
         .from('structural_expenses')
@@ -145,72 +169,73 @@ export const structuralExpensesService = {
         .select()
         .single()
 
-      if (error) {
-        if (error.code === '42P01') {
-          const local = getLocalExpenses(userId)
-          const index = local.findIndex(e => e.id === id)
-          if (index === -1) throw new Error('Despesa estrutural não encontrada')
+      if (error) throw error
+
+      const local = getLocalExpenses()
+      const index = local.findIndex(x => x.id === id)
+      if (index !== -1) {
+        local[index] = { ...local[index], ...data }
+        saveLocalExpenses(local)
+      }
+      notifyOfflineFallback(false)
+
+      return data
+    } catch (err) {
+      if (isNetworkError(err) || !getSupabase() || id.startsWith('local_')) {
+        console.warn('structuralExpensesService: updated expense locally.')
+        notifyOfflineFallback(true)
+        const local = getLocalExpenses()
+        const index = local.findIndex(x => x.id === id)
+        if (index !== -1) {
           const updated = {
             ...local[index],
             ...expense,
+            amount: expense.amount !== undefined ? Number(expense.amount) : local[index].amount,
             updated_at: new Date().toISOString()
-          }
+          } as StructuralExpense
           local[index] = updated
-          saveLocalExpenses(userId, local)
+          saveLocalExpenses(local)
           return updated
         }
-        throw error
+        throw new Error('Despesa estrutural local não localizada no backup.')
       }
-      return data
-    } catch (err) {
-      console.warn('Database update failed, using fallback localStorage:', err)
-      const local = getLocalExpenses('anon')
-      const index = local.findIndex(e => e.id === id)
-      if (index === -1) throw new Error('Despesa estrutural não encontrada')
-      const updated = {
-        ...local[index],
-        ...expense,
-        updated_at: new Date().toISOString()
-      }
-      local[index] = updated
-      saveLocalExpenses('anon', local)
-      return updated
+      throw err
     }
   },
 
   async deleteExpense(id: string): Promise<void> {
-    const supabase = getSupabase()
-
-    if (!supabase) {
-      const local = getLocalExpenses('anon')
-      const filtered = local.filter(e => e.id !== id)
-      saveLocalExpenses('anon', filtered)
-      return
-    }
-
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'anon'
+      const supabase = getSupabase()
+      if (!supabase) {
+        throw new Error('Supabase client unconfigured')
+      }
+
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        throw new Error('Você precisa estar logado para excluir uma despesa estrutural.')
+      }
 
       const { error } = await supabase
         .from('structural_expenses')
         .delete()
         .eq('id', id)
 
-      if (error) {
-        if (error.code === '42P01') {
-          const local = getLocalExpenses(userId)
-          const filtered = local.filter(e => e.id !== id)
-          saveLocalExpenses(userId, filtered)
-          return
-        }
-        throw error
-      }
+      if (error) throw error
+
+      const local = getLocalExpenses()
+      const filtered = local.filter(x => x.id !== id)
+      saveLocalExpenses(filtered)
+      notifyOfflineFallback(false)
     } catch (err) {
-      console.warn('Database delete failed, using fallback localStorage:', err)
-      const local = getLocalExpenses('anon')
-      const filtered = local.filter(e => e.id !== id)
-      saveLocalExpenses('anon', filtered)
+      if (isNetworkError(err) || !getSupabase() || id.startsWith('local_')) {
+        console.warn('structuralExpensesService: deleted expense locally.')
+        notifyOfflineFallback(true)
+        const local = getLocalExpenses()
+        const filtered = local.filter(x => x.id !== id)
+        saveLocalExpenses(filtered)
+        return
+      }
+      throw err
     }
   }
 }

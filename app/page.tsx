@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useFinancialMetrics } from '@/hooks/useFinancialMetrics'
 import { PerformanceHeader } from '@/components/metrics/PerformanceHeader'
 import { SavingsCard } from '@/components/metrics/SavingsCard'
@@ -17,13 +17,34 @@ import { StructuralTab } from '@/components/metrics/StructuralTab'
 import { DailyBalanceHeader } from '@/components/metrics/DailyBalanceHeader'
 import { CobrancasSummary } from '@/components/metrics/CobrancasSummary'
 import { RollingBalanceEngine } from '@/services/RollingBalanceEngine'
-import { AlertCircle, PlusCircle } from 'lucide-react'
+import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useAuth } from '@/context/AuthContext'
 
 export default function MetricsPage() {
+  const { user, signOut, isDbConnected, isOffline } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState<'metrics' | 'movements' | 'progression' | 'structural'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
+
+  const [offlineFallbackActive, setOfflineFallbackActive] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return !!(window as any).__isOfflineFallbackActive
+    }
+    return false
+  })
+
+  useEffect(() => {
+    const handleFallbackChange = (e: Event) => {
+      const active = (e as CustomEvent).detail?.active
+      setOfflineFallbackActive(!!active)
+    }
+    window.addEventListener('offline-fallback-changed', handleFallbackChange)
+    return () => {
+      window.removeEventListener('offline-fallback-changed', handleFallbackChange)
+    }
+  }, [])
+
   const { metrics, loading, error, movements, refresh } = useFinancialMetrics(
     currentDate.getFullYear(),
     currentDate.getMonth()
@@ -61,6 +82,82 @@ export default function MetricsPage() {
 
   return (
     <main className={`min-h-screen p-3 sm:p-6 pb-40 mx-auto lg:py-16 selection:bg-silver-brushed selection:text-velvet-deep ${activeTab === 'progression' ? 'max-w-none px-2 sm:px-4 lg:px-8' : 'max-w-5xl'}`}>
+      {/* Top Premium Status & Profile Bar */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-velvet-soft/30 border border-silver-brushed/5 rounded-[28px] p-4 sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-tr from-rose-500/20 to-amber-500/20 border border-rose-500/20 rounded-xl flex items-center justify-center">
+            <Lock className="text-rose-400" size={18} />
+          </div>
+          <div className="text-left">
+            <h1 className="text-xs font-black uppercase tracking-wider text-silver-polished flex items-center gap-2">
+              Painel Corporativo
+              <span className="text-[9px] font-black text-rose-400/80 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/10">v1.2</span>
+            </h1>
+            {user ? (
+              <p className="text-[10px] text-silver-brushed/40 font-semibold mt-0.5">
+                Conectado como: <span className="text-zinc-350">{user.email}</span>
+              </p>
+            ) : (
+              <p className="text-[10px] text-silver-brushed/45 font-semibold mt-0.5">Módulo de sincronização pendente</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* DB Connection Health indicator */}
+          <div className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider ${
+            isDbConnected 
+              ? 'bg-emerald-500/5 text-emerald-400 border-emerald-400/10' 
+              : 'bg-rose-500/5 text-rose-400 border-rose-500/10'
+          }`}>
+            <Database size={10} className={isDbConnected ? 'text-emerald-400' : 'text-rose-400'} />
+            {isDbConnected ? 'Supabase Conectado' : 'Supabase Inativo'}
+          </div>
+
+          {/* Network Connection Health indicator */}
+          <div className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider ${
+            !isOffline 
+              ? 'bg-emerald-500/5 text-emerald-400 border-emerald-400/10' 
+              : 'bg-amber-500/5 text-amber-400 border-amber-400/10'
+          }`}>
+            {!isOffline ? <Wifi size={10} className="text-emerald-400" /> : <WifiOff size={10} className="text-amber-400" />}
+            {!isOffline ? 'Rede Ativa' : 'Desconectado'}
+          </div>
+
+          {/* Sign Out Action */}
+          {user && (
+            <button
+              onClick={signOut}
+              className="px-3.5 py-1.5 bg-zinc-850 hover:bg-zinc-800 hover:text-rose-400 border border-zinc-700/30 text-zinc-400 rounded-full text-[9px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <LogOut size={10} />
+              Sair
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Offline Backup Mode Warning Notification */}
+      {offlineFallbackActive && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 bg-amber-500/10 border border-amber-500/20 rounded-[24px] p-5 text-left flex gap-4 items-center shadow-lg"
+        >
+          <div className="w-10 h-10 bg-amber-500/20 border border-amber-500/20 rounded-xl flex items-center justify-center shrink-0">
+            <WifiOff className="text-amber-400" size={18} />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              Modo de Backup Offline Ativo
+            </h3>
+            <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed font-semibold">
+              O banco de dados do Supabase está inacessível ou pendente de configuração em Secrets. Para garantir que seu trabalho nunca seja perdido, salvamos todas as suas métricas e movimentações no seu navegador com segurança!
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Immersive Month Selector */}
       <MonthSelector currentDate={currentDate} onChange={setCurrentDate} />
 

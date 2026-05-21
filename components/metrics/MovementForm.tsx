@@ -48,7 +48,6 @@ export function MovementForm({
   onLoadingChange
 }: MovementFormProps) {
   const [loading, setLoading] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
   
   const setInternalLoading = (val: boolean) => {
     setLoading(val)
@@ -108,7 +107,6 @@ export function MovementForm({
       } else {
         await financialService.insertMovement(payload)
       }
-      setSubmitError(null)
       onSuccess()
     } catch (error: any) {
       let displayMessage = error.message
@@ -120,7 +118,7 @@ export function MovementForm({
       }
 
       console.error('Save failed details:', error)
-      setSubmitError(`Erro ao salvar: ${displayMessage || 'Verifique sua conexão ou se você está logado.'}`)
+      alert(`Erro ao salvar: ${displayMessage || 'Verifique sua conexão ou se você está logado.'}`)
     } finally {
       setInternalLoading(false)
     }
@@ -128,12 +126,6 @@ export function MovementForm({
 
   return (
     <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {submitError && (
-        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold leading-relaxed flex items-center gap-3">
-          <span className="shrink-0 select-none text-[14px]">⚠️</span>
-          <span>{submitError}</span>
-        </div>
-      )}
       {/* Amount Input - Main Focus */}
       <div className="relative group">
         <label className="text-[8px] font-black text-silver-brushed/20 uppercase tracking-[0.4em] mb-3 block ml-1">

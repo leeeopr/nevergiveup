@@ -145,6 +145,18 @@ export function StructuralTab({ addTrigger = 0 }: { addTrigger?: number }) {
   return (
     <div className="space-y-8 w-full max-w-none">
       
+      {error && (
+        <div className="p-4 sm:p-5 bg-rose-500/10 border border-rose-500/20 rounded-3xl flex items-start gap-4">
+          <AlertCircle className="text-rose-500 shrink-0 mt-0.5" size={20} />
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-rose-400">Falha na Sincronização do Banco de Dados</h4>
+            <p className="text-xs text-silver-brushed/40 leading-relaxed font-semibold">
+              {error.message || 'Despesas estruturais não puderam ser sincronizadas com o Supabase. Por favor, verifique suas credenciais nos Secrets do projeto.'}
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* SECTION 1 - COMPONENT TITLE & SUBTITLE */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">

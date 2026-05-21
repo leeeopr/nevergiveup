@@ -1,14 +1,17 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { getSupabase } from '@/lib/supabase'
-import { AuthState, UserProfile, UserRole, Permission } from '@/types/auth'
+import { getSupabase, isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { AuthState, UserProfile, UserRole, Permission, AuthFsmState, TypedAuthError } from '@/types/auth'
 import { Session, User } from '@supabase/supabase-js'
 
 interface AuthContextType extends AuthState {
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
   refreshProfile: () => Promise<void>;
+  resetAuthError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -38,49 +41,467 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
-    user: { id: 'anon-user', email: 'local@financeirapro.local' } as any,
-    session: { user: { id: 'anon-user', email: 'local@financeirapro.local' } } as any,
-    profile: { id: 'anon-user', email: 'local@financeirapro.local', role: 'admin' } as any,
-    permissions: [
-      'movements:read',
-      'movements:create',
-      'movements:update',
-      'movements:delete',
-      'profile:read',
-      'profile:update',
-      'admin:dashboard'
-    ],
-    loading: false,
-    isIdentityResolved: true,
-    error: null
+    user: null,
+    session: null,
+    profile: null,
+    permissions: [],
+    loading: true,
+    isIdentityResolved: false,
+    error: null,
+    
+    // Safe initialization states matching a high-reliability cloud database system
+    fsmState: 'hydrating',
+    isDbConnected: false,
+    isDbUnavailable: true,
+    isAuthLoading: false,
+    isHydrating: true,
+    isOffline: false,
+    authErrorType: null,
+    authErrorMessage: null,
+    networkError: null
   })
 
+  const OWNER_PERMISSIONS = ROLE_PERMISSIONS['admin']
+
+  // Keep Offline and Online statuses synced automatically with the navigator interface
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      const offlineStatus = !navigator.onLine
+      setState(prev => ({ 
+        ...prev, 
+        isOffline: offlineStatus,
+        fsmState: offlineStatus ? 'network-error' : (prev.fsmState === 'network-error' ? 'idle' : prev.fsmState),
+        networkError: offlineStatus ? 'Comunicação indisponível. Sem conexão à internet dectada no seu navegador.' : null
+      }))
+    }
+    
+    window.addEventListener('online', updateOnlineStatus)
+    window.addEventListener('offline', updateOnlineStatus)
+    
+    // Resolve hydration immediately on mount
+    const currentOffline = !navigator.onLine
+    setState(prev => ({
+      ...prev,
+      isHydrating: false,
+      isOffline: currentOffline,
+      networkError: currentOffline ? 'Sem conexão de rede dectada.' : null
+    }))
+
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus)
+      window.removeEventListener('offline', updateOnlineStatus)
+    }
+  }, [])
+
+  const ensureProfileSync = useCallback(async (user: User): Promise<UserProfile | null> => {
+    const client = getSupabase()
+    if (!client) return null
+    
+    try {
+      const { data: profile, error: fetchError } = await client
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) return profile as UserProfile
+
+      // Auto-Sync creation if PGRST116 (NotFound) occurs
+      if (fetchError?.code === 'PGRST116') {
+        const { data: newProfile, error: createError } = await client
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            role: 'admin'
+          })
+          .select()
+          .single()
+
+        if (createError) throw createError
+        return newProfile as UserProfile
+      }
+      
+      throw fetchError
+    } catch (err) {
+      console.warn('Profile Identity Sync failed:', err)
+      throw err // Bubble up to main handler so DB errors are fully visible
+    }
+  }, [])
+
+  const resolveAuthState = useCallback(async (session: Session | null, targetFsmState: AuthFsmState) => {
+    if (!session) {
+      setState(prev => ({
+        ...prev,
+        user: null,
+        session: null,
+        profile: null,
+        permissions: [],
+        loading: false,
+        isIdentityResolved: true,
+        fsmState: targetFsmState,
+        isDbConnected: isSupabaseConfigured(),
+        isDbUnavailable: !isSupabaseConfigured(),
+        isAuthLoading: false
+      }))
+      return
+    }
+
+    try {
+      const profile = await ensureProfileSync(session.user)
+      const role: UserRole = profile?.role || 'admin' 
+      const permissions = ROLE_PERMISSIONS[role] || OWNER_PERMISSIONS
+
+      setState(prev => ({
+        ...prev,
+        user: session.user,
+        session,
+        profile,
+        permissions,
+        loading: false,
+        isIdentityResolved: true,
+        fsmState: 'authenticated',
+        isDbConnected: true,
+        isDbUnavailable: false,
+        isAuthLoading: false,
+        error: null,
+        authErrorType: null,
+        authErrorMessage: null
+      }))
+    } catch (err: any) {
+      console.error('Error in identity resolution chain:', err)
+      setState(prev => ({
+        ...prev,
+        user: session.user,
+        session,
+        profile: null,
+        permissions: OWNER_PERMISSIONS, // Prevent locks under database failures
+        loading: false,
+        isIdentityResolved: true,
+        fsmState: 'db-unavailable',
+        isDbConnected: true,
+        isDbUnavailable: false,
+        isAuthLoading: false,
+        authErrorType: 'DB_UNAVAILABLE',
+        authErrorMessage: `Erro de integridade ao ler perfil do banco de dados: ${err.message || err}`
+      }))
+    }
+  }, [ensureProfileSync, OWNER_PERMISSIONS])
+
+  // Central Auth Listener & Handlers
+  useEffect(() => {
+    if (state.isHydrating) return
+
+    if (!isSupabaseConfigured()) {
+      setState(prev => ({
+        ...prev,
+        fsmState: 'db-unavailable',
+        isDbConnected: false,
+        isDbUnavailable: true,
+        loading: false,
+        isIdentityResolved: true,
+        authErrorType: 'ENV_MISSING',
+        authErrorMessage: 'Chaves de credenciais de banco de dados Supabase não encontradas. Cadastre NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+      }))
+      return
+    }
+
+    const client = getSupabase()
+    if (!client) {
+      setState(prev => ({
+        ...prev,
+        fsmState: 'db-unavailable',
+        isDbConnected: false,
+        isDbUnavailable: true,
+        loading: false,
+        isIdentityResolved: true,
+        authErrorType: 'DB_UNAVAILABLE',
+        authErrorMessage: 'Erro crítico de compilação do cliente do banco de dados.'
+      }))
+      return
+    }
+
+    setState(prev => ({ ...prev, fsmState: 'session-restoring', loading: true }))
+
+    let active = true
+
+    // Fetch initial session
+    client.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (!active) return
+        if (session) {
+          resolveAuthState(session, 'authenticated')
+        } else {
+          resolveAuthState(null, 'idle')
+        }
+      })
+      .catch((err) => {
+        console.error('Error attempting to fetch active session:', err)
+        if (!active) return
+        setState(prev => ({
+          ...prev,
+          fsmState: 'network-error',
+          isDbConnected: false,
+          isDbUnavailable: false,
+          loading: false,
+          isIdentityResolved: true,
+          authErrorType: 'NETWORK_FAILURE',
+          authErrorMessage: 'Falha de requisição ou rede ao tentar validar sessão: ' + (err.message || err)
+        }))
+      })
+
+    // Auth events channel
+    const { data: { subscription } } = client.auth.onAuthStateChange(async (event, session) => {
+      if (!active) return
+
+      if (event === 'SIGNED_IN') {
+        setState(prev => ({ ...prev, fsmState: 'authenticating', loading: true }))
+        await resolveAuthState(session, 'authenticated')
+      } else if (event === 'SIGNED_OUT') {
+        setState(prev => ({ ...prev, fsmState: 'authenticating', loading: true }))
+        await resolveAuthState(null, 'idle')
+      } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        await resolveAuthState(session, 'authenticated')
+      }
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [state.isHydrating, resolveAuthState])
+
+  const signInWithEmail = async (email: string, password: string) => {
+    setState(prev => ({
+      ...prev,
+      fsmState: 'validating',
+      authErrorType: null,
+      authErrorMessage: null,
+      isAuthLoading: true
+    }))
+
+    if (!email || !password) {
+      const msg = 'Os campos e-mail e senha são obrigatórios.'
+      setState(prev => ({
+        ...prev,
+        fsmState: 'idle',
+        authErrorType: 'INVALID_CREDENTIALS',
+        authErrorMessage: msg,
+        isAuthLoading: false
+      }))
+      throw new Error(msg)
+    }
+
+    setState(prev => ({ ...prev, fsmState: 'connecting' }))
+    const client = getSupabase()
+    if (!client) {
+      const msg = 'Erro crítico de conexão: banco de dados offline.'
+      setState(prev => ({
+        ...prev,
+        fsmState: 'db-unavailable',
+        authErrorType: 'DB_UNAVAILABLE',
+        authErrorMessage: msg,
+        isAuthLoading: false
+      }))
+      throw new Error(msg)
+    }
+
+    try {
+      setState(prev => ({ ...prev, fsmState: 'authenticating' }))
+      const { data, error } = await client.auth.signInWithPassword({
+        email,
+        password
+      })
+
+      if (error) throw error
+
+      if (data.session) {
+        await resolveAuthState(data.session, 'authenticated')
+      }
+    } catch (err: any) {
+      const msg = err.message || 'Erro deconhecido ao tentar acessar.'
+      let errorType: TypedAuthError = 'UNKNOWN_ERROR'
+      let targetFsm: AuthFsmState = 'idle'
+
+      // Check for distinct categories
+      if (
+        msg.toLowerCase().includes('invalid') || 
+        msg.toLowerCase().includes('credentials') || 
+        msg.toLowerCase().includes('password') || 
+        msg.toLowerCase().includes('senha') || 
+        msg.toLowerCase().includes('e-mail')
+      ) {
+        errorType = 'INVALID_CREDENTIALS'
+        targetFsm = 'invalid-credentials'
+      } else if (
+        msg.toLowerCase().includes('network') || 
+        msg.toLowerCase().includes('fetch') || 
+        msg.toLowerCase().includes('networkerror')
+      ) {
+        errorType = 'NETWORK_FAILURE'
+        targetFsm = 'network-error'
+      } else if (msg.toLowerCase().includes('database') || msg.toLowerCase().includes('rls')) {
+        errorType = 'RLS_DENIED'
+        targetFsm = 'db-unavailable'
+      }
+
+      setState(prev => ({
+        ...prev,
+        fsmState: targetFsm,
+        authErrorType: errorType,
+        authErrorMessage: msg,
+        isAuthLoading: false
+      }))
+      throw err
+    }
+  }
+
+  const signUpWithEmail = async (email: string, password: string) => {
+    setState(prev => ({
+      ...prev,
+      fsmState: 'validating',
+      authErrorType: null,
+      authErrorMessage: null,
+      isAuthLoading: true
+    }))
+
+    if (!email || !password || password.length < 6) {
+      const msg = 'O e-mail e uma senha de no mínimo 6 caracteres são requeridos.'
+      setState(prev => ({
+        ...prev,
+        fsmState: 'idle',
+        authErrorType: 'INVALID_CREDENTIALS',
+        authErrorMessage: msg,
+        isAuthLoading: false
+      }))
+      throw new Error(msg)
+    }
+
+    setState(prev => ({ ...prev, fsmState: 'connecting' }))
+    const client = getSupabase()
+    if (!client) {
+      const msg = 'Erro crítico de conexão: banco de dados offline.'
+      setState(prev => ({
+        ...prev,
+        fsmState: 'db-unavailable',
+        authErrorType: 'DB_UNAVAILABLE',
+        authErrorMessage: msg,
+        isAuthLoading: false
+      }))
+      throw new Error(msg)
+    }
+
+    try {
+      setState(prev => ({ ...prev, fsmState: 'authenticating' }))
+      const { data, error } = await client.auth.signUp({
+        email,
+        password
+      })
+
+      if (error) throw error
+
+      setState(prev => ({
+        ...prev,
+        fsmState: 'idle',
+        isAuthLoading: false,
+        authErrorType: null,
+        authErrorMessage: null
+      }))
+    } catch (err: any) {
+      const msg = err.message || 'Erro ao criar sua conta.'
+      let errorType: TypedAuthError = 'UNKNOWN_ERROR'
+      let targetFsm: AuthFsmState = 'idle'
+
+      if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered') || msg.toLowerCase().includes('uso')) {
+        errorType = 'INVALID_CREDENTIALS'
+        targetFsm = 'invalid-credentials'
+      } else if (
+        msg.toLowerCase().includes('network') || 
+        msg.toLowerCase().includes('fetch') || 
+        msg.toLowerCase().includes('networkerror')
+      ) {
+        errorType = 'NETWORK_FAILURE'
+        targetFsm = 'network-error'
+      }
+
+      setState(prev => ({
+        ...prev,
+        fsmState: targetFsm,
+        authErrorType: errorType,
+        authErrorMessage: msg,
+        isAuthLoading: false
+      }))
+      throw err
+    }
+  }
+
   const signOut = async () => {
-    console.log('Sign-out requested in single-user mode. Cleared caches.')
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('financial_movements_cache')
-      localStorage.removeItem('structural_expenses_cache_anon-user')
-      localStorage.removeItem('structural_expenses_cache_anon')
-      window.location.reload()
+    const client = getSupabase()
+    if (!client) return
+
+    setState(prev => ({ 
+      ...prev, 
+      fsmState: 'authenticating', 
+      loading: true, 
+      isIdentityResolved: false,
+      isAuthLoading: true
+    }))
+    
+    try {
+      await client.auth.signOut()
+    } catch (err) {
+      console.error('Signout failed safely:', err)
+    } finally {
+      await resolveAuthState(null, 'idle')
     }
   }
 
   const hasPermission = (permission: Permission) => {
-    // Single-user mode automatically grants all permissions
-    return true
+    if (state.profile?.role === 'admin') return true
+    if (state.permissions.includes(permission)) return true
+    if (!state.isIdentityResolved && state.user) return true
+    return false
   }
 
   const refreshProfile = async () => {
-    // No-op in single-user offline mode
+    if (state.user) {
+      try {
+        const profile = await ensureProfileSync(state.user)
+        if (profile) {
+          const role: UserRole = profile.role
+          const permissions = ROLE_PERMISSIONS[role] || []
+          
+          setState(prev => ({
+            ...prev,
+            profile,
+            permissions
+          }))
+        }
+      } catch (err) {
+        console.error('refreshProfile error:', err)
+      }
+    }
   }
+
+  const resetAuthError = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      authErrorType: null,
+      authErrorMessage: null,
+      fsmState: prev.fsmState === 'invalid-credentials' || prev.fsmState === 'network-error' || prev.fsmState === 'timeout' ? 'idle' : prev.fsmState
+    }))
+  }, [])
 
   return (
     <AuthContext.Provider 
       value={{ 
         ...state, 
+        signInWithEmail,
+        signUpWithEmail,
         signOut, 
         hasPermission,
-        refreshProfile
+        refreshProfile,
+        resetAuthError
       }}
     >
       {children}

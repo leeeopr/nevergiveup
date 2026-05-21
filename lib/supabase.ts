@@ -2,57 +2,53 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 let supabaseInstance: SupabaseClient | null = null
 
-export const getSupabase = () => {
-  if (supabaseInstance) return supabaseInstance
-
+export const isSupabaseConfigured = (): boolean => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Validate that the keys are present and are NOT the placeholders or empty strings
-  const isValid = 
+  return !!(
     supabaseUrl && 
     supabaseAnonKey && 
     !supabaseUrl.includes('placeholder') &&
+    !supabaseUrl.includes('your-project') &&
+    supabaseUrl !== 'https://your-project.supabase.co' &&
+    supabaseAnonKey !== 'your-anon-key' &&
+    !supabaseAnonKey.includes('your-anon-key') &&
     supabaseUrl.startsWith('https://')
-
-  if (!isValid) {
-    if (typeof window !== 'undefined') {
-      console.error('[SUPABASE_INIT_FAILURE]', {
-        hasUrl: !!supabaseUrl,
-        hasKey: !!supabaseAnonKey,
-        urlIsPlaceholder: supabaseUrl ? supabaseUrl.includes('placeholder') : true,
-        startsWithHttps: supabaseUrl ? supabaseUrl.startsWith('https://') : false,
-        isProduction: process.env.NODE_ENV === 'production',
-        origin: window.location.origin
-      })
-    }
-    return null
-  }
-
-  try {
-    supabaseInstance = createClient(supabaseUrl!, supabaseAnonKey!)
-    return supabaseInstance
-  } catch (error) {
-    console.error('[SUPABASE_CLIENT_CREATION_FAILED]', error)
-    return null
-  }
+  )
 }
 
-// Global reference for simple usage (fully isomorphic via lazy getter Proxy)
-export const supabase = typeof window !== 'undefined'
+export const getSupabase = (): SupabaseClient | null => {
+  if (supabaseInstance) return supabaseInstance
+
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase is not configured yet with valid credentials.')
+    return null
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
+  return supabaseInstance
+}
+
+// Transparent safety wrapper (ES6 Proxy)
+// Throws highly scannable production-grade errors instead of generic null pointer crashes.
+export const supabase = typeof window !== 'undefined' || true
   ? new Proxy({} as SupabaseClient, {
       get(target, prop, receiver) {
         const client = getSupabase()
         if (!client) {
-          console.warn(`[SUPABASE_LAZY_WARNING] Attempted to access property "${String(prop)}" but the client is not initialized.`)
-          return undefined
+          throw new Error(
+            `ENV_MISSING: O cliente do Supabase não foi configurado. Atribua as propriedades NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY nas configurações de Secrets do projeto para viabilizar a persistência de dados permanente.`
+          )
         }
-        const val = Reflect.get(client, prop, receiver)
-        if (typeof val === 'function') {
-          return val.bind(client)
+        const value = Reflect.get(client, prop, receiver)
+        if (typeof value === 'function') {
+          return value.bind(client)
         }
-        return val
+        return value
       }
     })
-  : null
-
+  : (null as unknown as SupabaseClient)
