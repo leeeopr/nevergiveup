@@ -78,14 +78,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('online', updateOnlineStatus)
     window.addEventListener('offline', updateOnlineStatus)
     
-    // Resolve hydration immediately on mount
     const currentOffline = !navigator.onLine
-    setState(prev => ({
-      ...prev,
-      isHydrating: false,
-      isOffline: currentOffline,
-      networkError: currentOffline ? 'Sem conexão de rede dectada.' : null
-    }))
+
+    // Asynchronous bootstrap to resolve dynamic environment configuration before hydration completes
+    const bootstrapSession = async () => {
+      try {
+        const res = await fetch('/api/config')
+        if (res.ok) {
+          const config = await res.json()
+          if (config.NEXT_PUBLIC_SUPABASE_URL && config.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+            ;(window as any).__SUPABASE_DYNAMIC_URL = config.NEXT_PUBLIC_SUPABASE_URL
+            ;(window as any).__SUPABASE_DYNAMIC_KEY = config.NEXT_PUBLIC_SUPABASE_ANON_KEY
+            // Clear any cached or instance values if they were initialized to null previously due to race conditions
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to retrieve server dynamic configuration, relying on client compile bundle:', err)
+      } finally {
+        setState(prev => ({
+          ...prev,
+          isHydrating: false,
+          isOffline: currentOffline,
+          networkError: currentOffline ? 'Sem conexão de rede dectada.' : null
+        }))
+      }
+    }
+
+    bootstrapSession()
 
     return () => {
       window.removeEventListener('online', updateOnlineStatus)

@@ -7,8 +7,17 @@ export interface EnvValidationResult {
 }
 
 export const validateSupabaseEnv = (): EnvValidationResult => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  let supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (typeof window !== 'undefined') {
+    if ((window as any).__SUPABASE_DYNAMIC_URL) {
+      supabaseUrl = (window as any).__SUPABASE_DYNAMIC_URL
+    }
+    if ((window as any).__SUPABASE_DYNAMIC_KEY) {
+      supabaseAnonKey = (window as any).__SUPABASE_DYNAMIC_KEY
+    }
+  }
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return {
@@ -86,8 +95,20 @@ export const getSupabase = (): SupabaseClient => {
     )
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim()
+  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  let supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (typeof window !== 'undefined') {
+    if ((window as any).__SUPABASE_DYNAMIC_URL) {
+      supabaseUrl = (window as any).__SUPABASE_DYNAMIC_URL
+    }
+    if ((window as any).__SUPABASE_DYNAMIC_KEY) {
+      supabaseAnonKey = (window as any).__SUPABASE_DYNAMIC_KEY
+    }
+  }
+
+  supabaseUrl = supabaseUrl!.trim()
+  supabaseAnonKey = supabaseAnonKey!.trim()
 
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
