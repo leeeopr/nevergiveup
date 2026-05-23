@@ -224,15 +224,47 @@ ON CONFLICT (id) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+    default_role user_role := 'viewer';
+    meta_role text;
 BEGIN
-    INSERT INTO public.profiles (id, email, full_name, avatar_url, role)
-    VALUES (
-        new.id, 
-        new.email, 
-        new.raw_user_meta_data->>'full_name', 
-        new.raw_user_meta_data->>'avatar_url',
-        COALESCE((new.raw_user_meta_data->>'role')::user_role, 'viewer'::user_role)
-    );
+    -- Safely extract and check role from meta_data to avoid cast errors
+    BEGIN
+        IF new.raw_user_meta_data IS NOT NULL THEN
+            meta_role := new.raw_user_meta_data->>'role';
+            IF meta_role IS NOT NULL AND meta_role IN ('admin', 'editor', 'viewer') THEN
+                default_role := meta_role::user_role;
+            END IF;
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        default_role := 'viewer';
+    END;
+
+    -- Safely insert user profile, ensuring no error can crash user registration
+    BEGIN
+        INSERT INTO public.profiles (id, email, full_name, avatar_url, role)
+        VALUES (
+            new.id, 
+            new.email, 
+            COALESCE(new.raw_user_meta_data->>'full_name', ''), 
+            COALESCE(new.raw_user_meta_data->>'avatar_url', ''),
+            default_role
+        )
+        ON CONFLICT (id) DO UPDATE 
+        SET email = EXCLUDED.email,
+            full_name = EXCLUDED.full_name,
+            avatar_url = EXCLUDED.avatar_url;
+    EXCEPTION WHEN OTHERS THEN
+        -- Fallback to bare-minimum safe insert if something else goes wrong
+        BEGIN
+            INSERT INTO public.profiles (id, email, role)
+            VALUES (new.id, new.email, 'viewer')
+            ON CONFLICT (id) DO NOTHING;
+        EXCEPTION WHEN OTHERS THEN
+            NULL; -- Complete silence to protect user registration at all costs
+        END;
+    END;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
