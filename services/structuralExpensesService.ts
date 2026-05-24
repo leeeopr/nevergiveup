@@ -4,11 +4,6 @@ import { StructuralExpense } from '@/types/structural'
 export const structuralExpensesService = {
   async getExpenses(): Promise<StructuralExpense[]> {
     const supabase = getSupabase()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      throw new Error('Falha de identificação: Conecte-se para carregar suas despesas estruturais.')
-    }
-
     const { data, error } = await supabase
       .from('structural_expenses')
       .select('*')
@@ -23,9 +18,14 @@ export const structuralExpensesService = {
 
   async createExpense(expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<StructuralExpense> {
     const supabase = getSupabase()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      throw new Error('Autenticação expirada: Reconecte-se para cadastrar este registro estrutural.')
+    let userId = '00000000-0000-0000-0000-000000000000'
+    try {
+      const { data } = await supabase.auth.getUser()
+      if (data?.user) {
+        userId = data.user.id
+      }
+    } catch {
+      // safe offline/anonymous fallback
     }
 
     const { data, error } = await supabase
@@ -37,7 +37,7 @@ export const structuralExpensesService = {
         recurrence: expense.recurrence,
         priority: expense.priority,
         description: expense.description,
-        user_id: user.id
+        user_id: userId
       })
       .select()
       .single()
@@ -51,11 +51,6 @@ export const structuralExpensesService = {
 
   async updateExpense(id: string, expense: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>): Promise<StructuralExpense> {
     const supabase = getSupabase()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      throw new Error('Autenticação expirada: Reconecte-se para editar este registro estrutural.')
-    }
-
     const { data, error } = await supabase
       .from('structural_expenses')
       .update({
@@ -76,11 +71,6 @@ export const structuralExpensesService = {
 
   async deleteExpense(id: string): Promise<void> {
     const supabase = getSupabase()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      throw new Error('Autenticação expirada: Reconecte-se para excluir este registro estrutural.')
-    }
-
     const { error } = await supabase
       .from('structural_expenses')
       .delete()

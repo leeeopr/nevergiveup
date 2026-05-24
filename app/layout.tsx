@@ -17,7 +17,6 @@ export const metadata: Metadata = {
   description: 'Dashboard financeiro premium com foco em performance e custo de vida.',
 }
 
-import { AuthOverlay } from '@/components/auth/AuthOverlay'
 import { AuthProvider } from '@/context/AuthContext'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +24,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased bg-velvet-deep text-silver-polished" suppressHydrationWarning>
         <AuthProvider>
-          <AuthOverlay />
           {children}
         </AuthProvider>
       </body>

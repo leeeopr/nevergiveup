@@ -20,9 +20,10 @@ import { RollingBalanceEngine } from '@/services/RollingBalanceEngine'
 import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock, Activity, RotateCcw } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '@/context/AuthContext'
+import { LoginPage } from '@/components/auth/LoginPage'
 
 export default function MetricsPage() {
-  const { user, signOut, isDbConnected, isOffline } = useAuth()
+  const { user, loading: authLoading, signOut, isDbConnected, isOffline } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState<'metrics' | 'movements' | 'progression' | 'structural'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
@@ -39,6 +40,21 @@ export default function MetricsPage() {
   const totalBalance = dailyData.length > 0 ? dailyData[dailyData.length - 1].rollingBalance : 0
   const todayData = dailyData.find(d => d.date === new Date().toISOString().split('T')[0])
   const todayBalance = todayData ? todayData.dailyBalance : 0
+
+  if (authLoading) {
+    return (
+      <main className="min-h-screen p-6 flex flex-col items-center justify-center bg-zinc-950 text-silver-polished font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-rose-500/30 border-t-rose-500 animate-spin" />
+          <p className="text-xs font-semibold text-zinc-500 font-mono tracking-widest uppercase">Carregando Sessão...</p>
+        </div>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return <LoginPage />
+  }
 
   if (error) {
     return (
