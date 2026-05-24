@@ -344,10 +344,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, fsmState: 'authenticating' }))
       
+      const timeoutMs = envVerify.isValid ? 15000 : 2500
       const { data, error } = await withTimeout(
         client.auth.signInWithPassword({ email, password }),
-        15000,
-        'O servidor do Supabase demorou muito para responder (Tempo Limite de 15 segundos Excedido). Pode haver instabilidade de conexão.'
+        timeoutMs,
+        envVerify.isValid 
+          ? 'O servidor do Supabase demorou muito para responder (Tempo Limite de 15 segundos Excedido). Pode haver instabilidade de conexão.'
+          : 'O servidor do Supabase demorou muito para responder (Tempo Limite de 2.5s Excedido porque suas variáveis de ambiente do Supabase estão ausentes ou usam placeholders padrão do template). Introduza chaves válidas na aba "Secrets" para estabelecer fluxos reais de banco de dados.'
       )
 
       if (error) throw error
@@ -430,10 +433,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, fsmState: 'authenticating' }))
       
+      const timeoutMs = envVerify.isValid ? 15000 : 2500
       const { data, error } = await withTimeout(
         client.auth.signUp({ email, password }),
-        15000,
-        'O servidor do Supabase demorou muito para responder (Tempo Limite de 15 segundos Excedido).'
+        timeoutMs,
+        envVerify.isValid
+          ? 'O servidor do Supabase demorou muito para responder (Tempo Limite de 15 segundos Excedido).'
+          : 'O servidor do Supabase demorou muito para responder (Tempo Limite de 2.5s Excedido porque suas variáveis de ambiente do Supabase estão ausentes ou usam placeholders padrão do template). Introduza chaves válidas na aba "Secrets" para estabelecer fluxos reais de banco de dados.'
       )
 
       if (error) throw error
