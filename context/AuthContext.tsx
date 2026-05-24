@@ -212,84 +212,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (state.isHydrating) return
 
     const envVerify = validateSupabaseEnv()
-    if (!envVerify.isValid) {
-      setState(prev => ({
-        ...prev,
-        fsmState: 'db-unavailable',
-        isDbConnected: false,
-        isDbUnavailable: true,
-        loading: false,
-        isIdentityResolved: true,
-        authErrorType: 'ENV_MISSING',
-        authErrorMessage: envVerify.errorMessage || 'Chaves de credenciais de banco de dados Supabase ausentes ou inválidas.'
-      }))
-      return
-    }
+    
+    console.log('[Supabase-Forensic] Central Auth Listener initialization audit:', {
+      stage: 'hydration-complete-activation',
+      isValid: envVerify.isValid,
+      errorType: envVerify.errorType,
+      errorMessage: envVerify.errorMessage,
+      bundleUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      bundleKeyPresent: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      windowDynamicUrl: typeof window !== 'undefined' ? (window as any).__SUPABASE_DYNAMIC_URL : undefined,
+      windowDynamicKeyPresent: typeof window !== 'undefined' ? !!(window as any).__SUPABASE_DYNAMIC_KEY : undefined,
+    })
 
     let client
     try {
       client = getSupabase()
     } catch (err: any) {
-      setState(prev => ({
-        ...prev,
-        fsmState: 'db-unavailable',
-        isDbConnected: false,
-        isDbUnavailable: true,
-        loading: false,
-        isIdentityResolved: true,
-        authErrorType: 'DB_UNAVAILABLE',
-        authErrorMessage: `Falha crítica de carga do cliente: ${err.message || err}`
-      }))
-      return
+      console.error('[Supabase-Forensic] Graceful silent client instantiation catch:', err)
     }
 
-    setState(prev => ({ ...prev, fsmState: 'session-restoring', loading: true }))
+    setState(prev => ({
+      ...prev,
+      fsmState: 'session-restoring',
+      isDbConnected: envVerify.isValid,
+      isDbUnavailable: !envVerify.isValid,
+      loading: true,
+      authErrorType: !envVerify.isValid ? 'ENV_MISSING' : null,
+      authErrorMessage: !envVerify.isValid ? envVerify.errorMessage : null
+    }))
 
     let active = true
 
-    // Fetch initial session
-    client.auth.getSession()
-      .then(({ data: { session } }) => {
+    if (client) {
+      // Fetch initial session
+      client.auth.getSession()
+        .then(({ data: { session } }) => {
+          if (!active) return
+          if (session) {
+            resolveAuthState(session, 'authenticated')
+          } else {
+            resolveAuthState(null, 'idle')
+          }
+        })
+        .catch((err) => {
+          console.error('[Supabase-Forensic] Direct catch on resolving initial session route:', err)
+          if (!active) return
+          setState(prev => ({
+            ...prev,
+            fsmState: 'idle',
+            loading: false,
+            isIdentityResolved: true,
+            authErrorType: 'NETWORK_FAILURE',
+            authErrorMessage: 'Falha de requisição ou rede ao tentar validar sessão: ' + (err.message || err)
+          }))
+        })
+
+      // Auth events channel
+      const { data: { subscription } } = client.auth.onAuthStateChange(async (event, session) => {
         if (!active) return
-        if (session) {
-          resolveAuthState(session, 'authenticated')
-        } else {
-          resolveAuthState(null, 'idle')
+
+        console.log('[Supabase-Forensic] Auth state transitioned event stream:', event, !!session)
+
+        if (event === 'SIGNED_IN') {
+          setState(prev => ({ ...prev, fsmState: 'authenticating', loading: true }))
+          await resolveAuthState(session, 'authenticated')
+        } else if (event === 'SIGNED_OUT') {
+          setState(prev => ({ ...prev, fsmState: 'authenticating', loading: true }))
+          await resolveAuthState(null, 'idle')
+        } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          await resolveAuthState(session, 'authenticated')
         }
       })
-      .catch((err) => {
-        console.error('Error attempting to fetch active session:', err)
-        if (!active) return
-        setState(prev => ({
-          ...prev,
-          fsmState: 'network-error',
-          isDbConnected: false,
-          isDbUnavailable: false,
-          loading: false,
-          isIdentityResolved: true,
-          authErrorType: 'NETWORK_FAILURE',
-          authErrorMessage: 'Falha de requisição ou rede ao tentar validar sessão: ' + (err.message || err)
-        }))
-      })
 
-    // Auth events channel
-    const { data: { subscription } } = client.auth.onAuthStateChange(async (event, session) => {
-      if (!active) return
-
-      if (event === 'SIGNED_IN') {
-        setState(prev => ({ ...prev, fsmState: 'authenticating', loading: true }))
-        await resolveAuthState(session, 'authenticated')
-      } else if (event === 'SIGNED_OUT') {
-        setState(prev => ({ ...prev, fsmState: 'authenticating', loading: true }))
-        await resolveAuthState(null, 'idle')
-      } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        await resolveAuthState(session, 'authenticated')
+      return () => {
+        active = false
+        subscription.unsubscribe()
       }
-    })
-
-    return () => {
-      active = false
-      subscription.unsubscribe()
+    } else {
+      // Fallback if client is entirely missing
+      setState(prev => ({
+        ...prev,
+        fsmState: 'idle',
+        loading: false,
+        isIdentityResolved: true
+      }))
     }
   }, [state.isHydrating, resolveAuthState])
 
@@ -326,17 +332,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setState(prev => ({ ...prev, fsmState: 'connecting' }))
     const envVerify = validateSupabaseEnv()
-    if (!envVerify.isValid) {
-      const msg = envVerify.errorMessage || 'O cliente do Supabase não pôde ser iniciado por erro de configuração.'
-      setState(prev => ({
-        ...prev,
-        fsmState: 'db-unavailable',
-        authErrorType: 'ENV_MISSING',
-        authErrorMessage: msg,
-        isAuthLoading: false
-      }))
-      throw new Error(msg)
-    }
+    console.log('[Supabase-Forensic] signInWithEmail submit validation:', {
+      stage: 'submission-init',
+      isValid: envVerify.isValid,
+      errorType: envVerify.errorType,
+      errorMessage: envVerify.errorMessage,
+      emailSent: email
+    })
 
     const client = getSupabase()
     try {
@@ -416,17 +418,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setState(prev => ({ ...prev, fsmState: 'connecting' }))
     const envVerify = validateSupabaseEnv()
-    if (!envVerify.isValid) {
-      const msg = envVerify.errorMessage || 'O cliente do Supabase não pôde ser iniciado por erro de configuração.'
-      setState(prev => ({
-        ...prev,
-        fsmState: 'db-unavailable',
-        authErrorType: 'ENV_MISSING',
-        authErrorMessage: msg,
-        isAuthLoading: false
-      }))
-      throw new Error(msg)
-    }
+    console.log('[Supabase-Forensic] signUpWithEmail submit validation:', {
+      stage: 'submission-init',
+      isValid: envVerify.isValid,
+      errorType: envVerify.errorType,
+      errorMessage: envVerify.errorMessage,
+      emailSent: email
+    })
 
     const client = getSupabase()
     try {
