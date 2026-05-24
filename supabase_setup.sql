@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS public.financial_movements (
     due_date DATE,
     is_paid BOOLEAN DEFAULT FALSE,
     paid_at TIMESTAMPTZ,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid()
 );
 
 -- Ensure all columns exist (for existing tables)
@@ -166,6 +166,9 @@ BEGIN
     ) THEN
         ALTER TABLE financial_movements ADD COLUMN paid_at TIMESTAMPTZ;
     END IF;
+
+    -- Ensure DEFAULT auth.uid() for financial_movements.user_id
+    ALTER TABLE public.financial_movements ALTER COLUMN user_id SET DEFAULT auth.uid();
 END $$;
 
 -- Forensic Fix: If there is an old constraint mismatching to a "public.users" table, 
@@ -293,8 +296,11 @@ CREATE TABLE IF NOT EXISTS public.structural_expenses (
     recurrence TEXT NOT NULL DEFAULT 'mensal',
     priority TEXT NOT NULL DEFAULT 'media',
     description TEXT,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid()
 );
+
+-- Ensure DEFAULT auth.uid() for structural_expenses.user_id if table was already created
+ALTER TABLE public.structural_expenses ALTER COLUMN user_id SET DEFAULT auth.uid();
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.structural_expenses ENABLE ROW LEVEL SECURITY;

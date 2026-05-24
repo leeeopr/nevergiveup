@@ -1,12 +1,23 @@
 import { getSupabase } from '@/lib/supabase'
 import { StructuralExpense } from '@/types/structural'
 
+async function getUserId(): Promise<string> {
+  const supabase = getSupabase()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user?.id) {
+    throw new Error('Acesso não autorizado. Sua sessão de login pode ter expirado. Por favor, saia e faça login novamente para reestabelecer as credenciais.')
+  }
+  return session.user.id
+}
+
 export const structuralExpensesService = {
   async getExpenses(): Promise<StructuralExpense[]> {
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('structural_expenses')
       .select('*')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -18,15 +29,7 @@ export const structuralExpensesService = {
 
   async createExpense(expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<StructuralExpense> {
     const supabase = getSupabase()
-    let userId = '00000000-0000-0000-0000-000000000000'
-    try {
-      const { data } = await supabase.auth.getUser()
-      if (data?.user) {
-        userId = data.user.id
-      }
-    } catch {
-      // safe offline/anonymous fallback
-    }
+    const userId = await getUserId()
 
     const { data, error } = await supabase
       .from('structural_expenses')
@@ -51,6 +54,7 @@ export const structuralExpensesService = {
 
   async updateExpense(id: string, expense: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>): Promise<StructuralExpense> {
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('structural_expenses')
       .update({
@@ -59,6 +63,7 @@ export const structuralExpensesService = {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('user_id', userId)
       .select()
       .single()
 
@@ -71,10 +76,12 @@ export const structuralExpensesService = {
 
   async deleteExpense(id: string): Promise<void> {
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { error } = await supabase
       .from('structural_expenses')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) {
       throw new Error(`Erro ao excluir despesa estrutural no Supabase: ${error.message}`)

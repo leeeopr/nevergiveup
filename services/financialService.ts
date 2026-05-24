@@ -2,15 +2,26 @@ import { getSupabase } from '@/lib/supabase'
 import { FinancialMovement } from '@/types/financial'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
 
+async function getUserId(): Promise<string> {
+  const supabase = getSupabase()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user?.id) {
+    throw new Error('Acesso não autorizado. Sua sessão de login pode ter expirado. Por favor, saia e faça login novamente para reestabelecer as credenciais.')
+  }
+  return session.user.id
+}
+
 export const financialService = {
   async getMovementsByMonth(year: number, month: number): Promise<FinancialMovement[]> {
     const starStr = format(startOfMonth(new Date(year, month)), 'yyyy-MM-dd')
     const endStr = format(endOfMonth(new Date(year, month)), 'yyyy-MM-dd')
     
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('financial_movements')
       .select('*')
+      .eq('user_id', userId)
       .gte('date', starStr)
       .lte('date', endStr)
       .order('date', { ascending: false })
@@ -24,9 +35,11 @@ export const financialService = {
 
   async getAllMovements(): Promise<FinancialMovement[]> {
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('financial_movements')
       .select('*')
+      .eq('user_id', userId)
       .order('date', { ascending: true })
 
     if (error) {
@@ -38,9 +51,11 @@ export const financialService = {
 
   async getOpeningBalance(beforeDate: string): Promise<number> {
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('financial_movements')
       .select('amount, type, is_paid')
+      .eq('user_id', userId)
       .lt('date', beforeDate)
 
     if (error) {
@@ -61,15 +76,7 @@ export const financialService = {
 
   async insertMovement(movement: Omit<FinancialMovement, 'id' | 'created_at' | 'user_id'>): Promise<FinancialMovement> {
     const supabase = getSupabase()
-    let userId = '00000000-0000-0000-0000-000000000000'
-    try {
-      const { data } = await supabase.auth.getUser()
-      if (data?.user) {
-        userId = data.user.id
-      }
-    } catch {
-      // safe offline/anonymous fallback
-    }
+    const userId = await getUserId()
 
     const { data, error } = await supabase
       .from('financial_movements')
@@ -89,11 +96,12 @@ export const financialService = {
 
   async updateMovement(id: string, movement: Partial<Omit<FinancialMovement, 'id' | 'created_at' | 'user_id'>>): Promise<FinancialMovement> {
     const supabase = getSupabase()
-    // No-op check to ensure seamless user feel even when unsynced/no-auth
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('financial_movements')
       .update(movement)
       .eq('id', id)
+      .eq('user_id', userId)
       .select()
       .single()
 
@@ -106,11 +114,12 @@ export const financialService = {
 
   async deleteMovement(id: string): Promise<void> {
     const supabase = getSupabase()
-    // No-op check to ensure seamless user feel even when unsynced/no-auth
+    const userId = await getUserId()
     const { error } = await supabase
       .from('financial_movements')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId)
 
     if (error) {
       throw new Error(`Erro ao sincronizar exclusão física com o Supabase: ${error.message}`)
@@ -119,9 +128,11 @@ export const financialService = {
 
   async getMovementsByRange(startDate: string, endDate: string): Promise<FinancialMovement[]> {
     const supabase = getSupabase()
+    const userId = await getUserId()
     const { data, error } = await supabase
       .from('financial_movements')
       .select('*')
+      .eq('user_id', userId)
       .gte('date', startDate)
       .lte('date', endDate)
 

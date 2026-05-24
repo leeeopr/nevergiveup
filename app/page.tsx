@@ -157,7 +157,7 @@ export default function MetricsPage() {
   const hasData = movements.length > 0
 
   return (
-    <main className={`min-h-screen p-3 sm:p-6 pb-40 mx-auto lg:py-16 selection:bg-silver-brushed selection:text-velvet-deep ${activeTab === 'progression' ? 'max-w-none px-2 sm:px-4 lg:px-8' : 'max-w-5xl'}`}>
+    <main key={user ? user.id : 'anonymous'} className={`min-h-screen p-3 sm:p-6 pb-40 mx-auto lg:py-16 selection:bg-silver-brushed selection:text-velvet-deep ${activeTab === 'progression' ? 'max-w-none px-2 sm:px-4 lg:px-8' : 'max-w-5xl'}`}>
       {/* Top Premium Status & Profile Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-velvet-soft/30 border border-silver-brushed/5 rounded-[28px] p-4 sm:px-6">
         <div className="flex items-center gap-3">

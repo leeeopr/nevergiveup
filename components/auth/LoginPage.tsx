@@ -22,11 +22,13 @@ export function LoginPage() {
       return
     }
 
+    const normalizedEmail = email.trim().toLowerCase()
+
     setLoading(true)
     setError(null)
 
     try {
-      await signInWithEmail(email, password)
+      await signInWithEmail(normalizedEmail, password)
     } catch (err: any) {
       console.error('Login error:', err)
       const message = err?.message || String(err)
