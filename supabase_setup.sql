@@ -58,6 +58,10 @@ DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile" ON public.profiles
     FOR UPDATE USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
+CREATE POLICY "Users can insert their own profile" ON public.profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
 DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
 CREATE POLICY "Admins can view all profiles" ON public.profiles
     FOR SELECT USING (public.has_permission('admin:dashboard'));
@@ -223,9 +227,13 @@ WHERE id NOT IN (SELECT id FROM public.profiles)
 ON CONFLICT (id) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
-    default_role user_role := 'viewer';
+    default_role public.user_role := 'viewer';
     meta_role text;
 BEGIN
     -- Safely extract and check role from meta_data to avoid cast errors
@@ -233,11 +241,11 @@ BEGIN
         IF new.raw_user_meta_data IS NOT NULL THEN
             meta_role := new.raw_user_meta_data->>'role';
             IF meta_role IS NOT NULL AND meta_role IN ('admin', 'editor', 'viewer') THEN
-                default_role := meta_role::user_role;
+                default_role := meta_role::public.user_role;
             END IF;
         END IF;
     EXCEPTION WHEN OTHERS THEN
-        default_role := 'viewer';
+        default_role := 'viewer'::public.user_role;
     END;
 
     -- Safely insert user profile, ensuring no error can crash user registration
@@ -258,7 +266,7 @@ BEGIN
         -- Fallback to bare-minimum safe insert if something else goes wrong
         BEGIN
             INSERT INTO public.profiles (id, email, role)
-            VALUES (new.id, new.email, 'viewer')
+            VALUES (new.id, new.email, 'viewer'::public.user_role)
             ON CONFLICT (id) DO NOTHING;
         EXCEPTION WHEN OTHERS THEN
             NULL; -- Complete silence to protect user registration at all costs
@@ -267,7 +275,7 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
