@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { Session, User } from '@supabase/supabase-js'
 
@@ -97,15 +97,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Session tracking refs to avoid race conditions and redundant triggers during double login / mount transitions
-  const activeResolutionRef = useRef<string | null>(null)
-  const resolvedUserRef = useRef<string | null>(null)
-
   // Action helper to resolve active sessions
   const resolveSession = useCallback(async (currentSession: Session | null) => {
     if (!currentSession) {
-      activeResolutionRef.current = null
-      resolvedUserRef.current = null
       setUser(null)
       setSession(null)
       setProfile(null)
@@ -113,53 +107,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const currentUserId = currentSession.user.id
-
-    // If we have already fully resolved this user and nothing has cleared it, keep it stable
-    if (resolvedUserRef.current === currentUserId && profile !== null) {
-      setSession(currentSession)
-      setUser(currentSession.user)
-      setLoading(false)
-      return
-    }
-
-    // Guard against redundant parallel profile lookups for the same user
-    if (activeResolutionRef.current === currentUserId) {
-      return
-    }
-
-    activeResolutionRef.current = currentUserId
-    setLoading(true)
-
     setSession(currentSession)
     setUser(currentSession.user)
 
     try {
-      const activeProfile = await fetchProfile(currentUserId, currentSession.user.email || null)
+      const activeProfile = await fetchProfile(currentSession.user.id, currentSession.user.email || null)
       setProfile(activeProfile)
-      resolvedUserRef.current = currentUserId
     } catch {
       setProfile({
-        id: currentUserId,
+        id: currentSession.user.id,
         email: currentSession.user.email || null,
         role: 'admin',
         full_name: currentSession.user.email ? currentSession.user.email.split('@')[0] : 'Convidado',
         avatar_url: null
       })
-      resolvedUserRef.current = currentUserId
     } finally {
-      if (activeResolutionRef.current === currentUserId) {
-        activeResolutionRef.current = null
-      }
       setLoading(false)
     }
-  }, [fetchProfile, profile])
-
-  // Wrap resolveSession in a stable Ref to protect the mounting effect against tear-down reload loops
-  const resolveSessionRef = useRef(resolveSession)
-  useEffect(() => {
-    resolveSessionRef.current = resolveSession
-  }, [resolveSession])
+  }, [fetchProfile])
 
   // Mount session validation
   useEffect(() => {
@@ -169,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: { session: initialSession } } = await supabase.auth.getSession()
         if (active) {
-          await resolveSessionRef.current(initialSession)
+          await resolveSession(initialSession)
         }
       } catch (err) {
         console.error('Failed to restore initial login session:', err)
@@ -183,9 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!active) return
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        await resolveSessionRef.current(newSession)
+        await resolveSession(newSession)
       } else if (event === 'SIGNED_OUT') {
-        await resolveSessionRef.current(null)
+        await resolveSession(null)
       }
     })
 
@@ -193,12 +158,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       active = false
       subscription.unsubscribe()
     }
-  }, []) // Empty dependencies ensure mounting event runs exactly once without recreate-teardown loops
+  }, [resolveSession])
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
-    // Rely exclusively on the global onAuthStateChange listener to trigger and deserialize current user sequence safely
+    if (data.session) {
+      await resolveSession(data.session)
+    }
   }
 
   const signOut = async () => {
