@@ -24,7 +24,13 @@ const ACTION_OPTIONS: ActionOption[] = [
   { type: 'cobranca', label: 'Cobrança', icon: <HandCoins size={24} />, color: 'text-orange-400 bg-orange-400/10' },
 ]
 
-export function FloatingActionButton({ onRefresh, onClickOverride }: { onRefresh: () => void; onClickOverride?: () => void }) {
+export interface FloatingActionButtonProps {
+  onRefresh: () => void
+  activeTab: 'metrics' | 'movements' | 'progression' | 'structural'
+  onAddStructuralExpense?: () => void
+}
+
+export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpense }: FloatingActionButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<MovementType | null>(null)
   const [saving, setSaving] = useState(false)
@@ -46,7 +52,28 @@ export function FloatingActionButton({ onRefresh, onClickOverride }: { onRefresh
   
   // Explicit Permissions Check (hasPermission handles fallback if isIdentityResolved is false but user is present)
   if (isIdentityResolved && !user) return null
-  if (!hasPermission('movements:create') && !onClickOverride) return null
+
+  // Ensure absolute multi-user separation & read-only enforcement:
+  // If the active user has a viewer-only role and doesn't possess movements:create,
+  // we do not render any creation FAB on any tab.
+  if (!hasPermission('movements:create')) return null
+
+  const handleFabClick = () => {
+    if (activeTab === 'structural') {
+      if (onAddStructuralExpense) {
+        onAddStructuralExpense()
+      }
+    } else {
+      setIsOpen(true)
+    }
+  }
+
+  const getTooltipText = () => {
+    if (activeTab === 'structural') {
+      return 'Registrar Novo Custo Fixo'
+    }
+    return 'Registrar Nova Movimentação'
+  }
 
   const header = (
     <div className="flex justify-between items-center mb-6 sm:mb-8">
@@ -92,7 +119,8 @@ export function FloatingActionButton({ onRefresh, onClickOverride }: { onRefresh
         <motion.button
           whileHover={{ scale: 1.05, rotate: 90 }}
           whileTap={{ scale: 0.9 }}
-          onClick={onClickOverride || (() => setIsOpen(true))}
+          onClick={handleFabClick}
+          title={getTooltipText()}
           className="w-16 h-16 rounded-2xl bg-wood-teak border border-white/20 shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex items-center justify-center text-silver-polished relative overflow-hidden group"
         >
           <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-transparent to-black/20 pointer-events-none" />

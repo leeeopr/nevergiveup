@@ -380,7 +380,8 @@ export default function MetricsPage() {
       {/* Floating Action Button */}
       <FloatingActionButton 
         onRefresh={refresh} 
-        onClickOverride={activeTab === 'structural' ? () => setAddStructuralTrigger(prev => prev + 1) : undefined}
+        activeTab={activeTab}
+        onAddStructuralExpense={() => setAddStructuralTrigger(prev => prev + 1)}
       />
       
       {/* Bottom Navigation */}
