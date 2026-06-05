@@ -44,7 +44,7 @@ export function DialogShell({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-velvet-deep/90 backdrop-blur-md z-[80]"
+            className="fixed inset-0 bg-slate-900/60 dark:bg-velvet-deep/80 backdrop-blur-sm z-[80]"
           />
           
           {/* Content Wrapper */}
@@ -58,8 +58,8 @@ export function DialogShell({
                 pointer-events-auto
                 relative
                 w-full ${maxWidth} mx-auto 
-                bg-velvet-deep border-t sm:border border-silver-brushed/10 
-                shadow-[0_-20px_60px_rgba(0,0,0,0.8)]
+                bg-[var(--surface)] border-t sm:border border-[var(--border)] 
+                shadow-2xl sm:shadow-[0_20px_60px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.8)]
                 flex flex-col
                 ${type === 'sheet' 
                   ? 'rounded-t-[32px] sm:rounded-[40px] max-h-[95dvh] sm:max-h-[90dvh]' 
@@ -68,7 +68,7 @@ export function DialogShell({
               `}
             >
               {type === 'sheet' && (
-                 <div className="w-12 h-1 bg-silver-brushed/5 rounded-full mx-auto my-4 silver-border shrink-0" />
+                 <div className="w-12 h-1 bg-[var(--border)] rounded-full mx-auto my-4 shrink-0" />
               )}
               
               {header && (

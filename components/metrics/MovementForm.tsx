@@ -128,68 +128,68 @@ export function MovementForm({
     <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Amount Input - Main Focus */}
       <div className="relative group">
-        <label className="text-[8px] font-black text-silver-brushed/20 uppercase tracking-[0.4em] mb-3 block ml-1">
+        <label className="text-[10px] sm:text-[11px] font-black text-zinc-650 dark:text-silver-brushed/60 uppercase tracking-[0.3em] mb-3 block ml-1">
           Montante Nominal
         </label>
-        <div className="flex items-center gap-3 text-4xl sm:text-6xl font-black text-silver-polished tracking-tighter">
-          <span className="text-silver-brushed/10 text-2xl select-none">R$</span>
+        <div className="flex items-center gap-3 text-4xl sm:text-6xl font-black text-[var(--text-main)] tracking-tighter">
+          <span className="text-zinc-500 dark:text-silver-brushed/30 text-2xl select-none font-bold">R$</span>
           <input 
             type="number" 
             step="0.01"
             placeholder="0,00"
             autoFocus
-            className="w-full bg-transparent border-none focus:ring-0 p-0 placeholder:text-silver-brushed/5"
+            className="w-full bg-transparent border-none focus:ring-0 p-0 placeholder:text-zinc-400 dark:placeholder:text-silver-brushed/20 font-black text-[var(--text-main)]"
             {...register('amount', { required: true, min: 0.01 })}
           />
         </div>
-        {errors.amount && <p className="text-rose-400 text-[9px] uppercase font-black tracking-widest mt-2 ml-1">Valor Mandatório</p>}
-        <div className="h-px w-full bg-silver-brushed/10 mt-4 group-focus-within:bg-silver-brushed/30 transition-colors" />
+        {errors.amount && <p className="text-rose-600 dark:text-rose-400 text-[10px] sm:text-[11px] uppercase font-black tracking-widest mt-2 ml-1">Valor Mandatório</p>}
+        <div className="h-px w-full bg-[var(--border)] mt-4 group-focus-within:bg-[var(--text-muted)] transition-colors" />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Description */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">
-            <FileText size={10} className="opacity-40" /> Descritivo
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+            <FileText size={12} className="opacity-60 text-[var(--text-muted)]" /> Descritivo
           </label>
           <input 
             type="text"
             placeholder="Ex: Alocação de Ativos..."
-            className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished placeholder:text-silver-brushed/10 focus:border-silver-brushed/30 focus:ring-0 transition-all text-sm font-medium shadow-inner"
+            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-zinc-500 dark:placeholder:text-silver-brushed/30 focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
             {...register('description', { required: true })}
           />
         </div>
 
         {/* Date */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">
-            <Calendar size={10} className="opacity-40" /> Data
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+            <Calendar size={12} className="opacity-60 text-[var(--text-muted)]" /> Data
           </label>
           <input 
             type="date"
-            className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished focus:border-silver-brushed/30 focus:ring-0 transition-all text-sm font-medium shadow-inner"
+            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
             {...register('date', { required: true })}
           />
         </div>
 
         {/* Tag */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">
-            <Tag size={10} className="opacity-40" /> Classificação
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+            <Tag size={12} className="opacity-60 text-[var(--text-muted)]" /> Classificação
           </label>
           <input 
             type="text"
             placeholder="Ex: Patrimonial..."
-            className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished focus:border-silver-brushed/30 focus:ring-0 transition-all text-sm font-medium shadow-inner"
+            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-zinc-500 dark:placeholder:text-silver-brushed/30 focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
             {...register('tag')}
           />
         </div>
 
         {/* Specialized Fields: Cobrança */}
         {type === 'cobranca' && (
-          <div className="sm:col-span-2 space-y-6 pt-4 border-t border-silver-brushed/5">
+          <div className="sm:col-span-2 space-y-6 pt-4 border-t border-[var(--border)]">
             <div className="space-y-4">
-              <label className="flex items-center gap-2 text-[8px] font-black text-orange-400/50 uppercase tracking-[0.3em] ml-1">
+              <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-orange-700 dark:text-orange-400 uppercase tracking-[0.2em] ml-1">
                 Devedor Principal
               </label>
               
@@ -199,10 +199,10 @@ export function MovementForm({
                     key={person}
                     type="button"
                     onClick={() => setValue('debtor_name', person)}
-                    className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all silver-border ${
+                    className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${
                       debtorName === person 
-                        ? 'bg-orange-500/20 text-orange-400 border-orange-400/30' 
-                        : 'bg-white/5 text-silver-brushed/40 hover:text-silver-polished'
+                        ? 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/40' 
+                        : 'bg-slate-100 dark:bg-white/5 text-zinc-600 dark:text-silver-brushed/60 border-[var(--border)] hover:bg-[var(--surface-accent)] dark:hover:bg-white/15'
                     }`}
                   >
                     {person}
@@ -213,27 +213,27 @@ export function MovementForm({
               <input 
                 type="text"
                 placeholder="Nome do Devedor..."
-                className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-sm font-medium"
+                className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-zinc-500 dark:placeholder:text-silver-brushed/30 text-sm font-semibold"
                 {...register('debtor_name', { required: type === 'cobranca' })}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">Vencimento</label>
+                <label className="text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">Vencimento</label>
                 <input 
                   type="date"
-                  className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-sm font-medium"
+                  className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] text-sm font-semibold"
                   {...register('due_date')}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1 text-center block">Status</label>
-                <label className="flex items-center justify-center gap-3 cursor-pointer p-4 bg-black/20 silver-border rounded-xl border border-dashed border-silver-brushed/10 group h-full">
+              <div className="space-y-2 relative">
+                <label className="text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1 text-center block">Status</label>
+                <label className="flex items-center justify-center gap-3 cursor-pointer p-4 bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl border-dashed border-zinc-300 dark:border-silver-brushed/20 group h-[54px] relative">
                   <input type="checkbox" className="sr-only peer" {...register('is_paid')} />
-                  <div className="w-10 h-6 bg-black/40 silver-border rounded-full peer peer-checked:bg-orange-500/20 peer-checked:border-orange-500/40 transition-all" />
-                  <div className="absolute left-auto top-auto w-4 h-4 bg-silver-brushed/20 rounded-full transition-all peer-checked:translate-x-4 peer-checked:bg-orange-400" />
-                  <span className="text-[9px] font-black text-silver-brushed/30 group-hover:text-silver-polished transition-colors uppercase tracking-[0.2em]">PAGO?</span>
+                  <div className="w-10 h-6 bg-slate-200 dark:bg-black/40 border border-[var(--border)] rounded-full peer peer-checked:bg-orange-100 dark:peer-checked:bg-orange-500/20 peer-checked:border-orange-500/40 transition-all relative" />
+                  <div className="absolute left-[20px] top-[19px] w-4 h-4 bg-zinc-400 dark:bg-silver-brushed/30 rounded-full transition-all peer-checked:translate-x-4 peer-checked:bg-orange-600 dark:peer-checked:bg-orange-400 pointer-events-none" />
+                  <span className="text-[10px] font-black text-zinc-600 dark:text-silver-brushed/40 group-hover:text-[var(--text-main)] transition-colors uppercase tracking-[0.2em]">PAGO?</span>
                 </label>
               </div>
             </div>
@@ -244,20 +244,20 @@ export function MovementForm({
         {type === 'cartao' && (
           <div className="flex gap-4 sm:col-span-1">
             <div className="space-y-2 flex-[2]">
-              <label className="text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">Emissor</label>
+              <label className="text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">Emissor</label>
               <input 
                 type="text"
                 placeholder="Ex: Platinum X..."
-                className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-sm font-medium"
+                className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-zinc-500 dark:placeholder:text-silver-brushed/30 text-sm font-semibold"
                 {...register('card_name')}
               />
             </div>
             <div className="space-y-2 flex-1">
-              <label className="text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">Ciclo</label>
+              <label className="text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">Ciclo</label>
               <input 
                 type="number"
                 min="1"
-                className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-sm font-medium"
+                className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] text-sm font-semibold"
                 {...register('installments')}
               />
             </div>
@@ -266,14 +266,14 @@ export function MovementForm({
       </div>
 
       {/* Recurrence System */}
-      <div className="space-y-4 pt-3 border-t border-silver-brushed/5">
-        <label className="flex items-center gap-3 cursor-pointer group w-fit">
-          <div className="relative">
+      <div className="space-y-4 pt-3 border-t border-[var(--border)] relative">
+        <label className="flex items-center gap-3 cursor-pointer group w-fit relative">
+          <div className="relative w-10 h-6">
             <input type="checkbox" className="sr-only peer" {...register('is_recurring')} />
-            <div className="w-10 h-6 bg-black/40 silver-border rounded-full peer peer-checked:bg-emerald-500/20 peer-checked:border-emerald-500/40 transition-all" />
-            <div className="absolute left-1 top-1 w-4 h-4 bg-silver-brushed/20 rounded-full transition-all peer-checked:translate-x-4 peer-checked:bg-emerald-400" />
+            <div className="w-10 h-6 bg-slate-200 dark:bg-black/40 border border-[var(--border)] rounded-full peer peer-checked:bg-emerald-105 dark:peer-checked:bg-emerald-500/20 peer-checked:border-emerald-500/40 transition-all" />
+            <div className="absolute left-1 top-1 w-4 h-4 bg-zinc-400 dark:bg-silver-brushed/30 rounded-full transition-all peer-checked:translate-x-4 peer-checked:bg-emerald-600 dark:peer-checked:bg-emerald-400 pointer-events-none" />
           </div>
-          <span className="text-[9px] font-black text-silver-brushed/30 group-hover:text-silver-polished transition-colors uppercase tracking-[0.2em]">
+          <span className="text-[10px] font-black text-zinc-650 dark:text-silver-brushed/40 group-hover:text-[var(--text-main)] transition-colors uppercase tracking-[0.2em]">
             Habilitar Recorrência?
           </span>
         </label>
@@ -282,45 +282,45 @@ export function MovementForm({
           <motion.div 
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-l-2 border-silver-brushed/5 pl-5 py-1"
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-l-2 border-[var(--border)] pl-5 py-1"
           >
             <div className="space-y-2">
-              <label className="flex items-center gap-2 text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">
-                <RefreshCcw size={10} className="opacity-40" /> Período
+              <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-650 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+                <RefreshCcw size={12} className="opacity-60 text-[var(--text-muted)]" /> Período
               </label>
               <select 
-                className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-[11px] font-black uppercase tracking-widest focus:border-silver-brushed/30 transition-all appearance-none cursor-pointer"
+                className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] text-[11px] font-black uppercase tracking-widest focus:border-[var(--text-muted)] focus:ring-0 transition-all appearance-none cursor-pointer"
                 {...register('recurrence_type')}
               >
-                <option value="diaria">DIÁRIA</option>
-                <option value="semanal">SEMANAL</option>
-                <option value="quinzenal">QUINZENAL</option>
-                <option value="mensal">MENSAL</option>
-                <option value="bimestral">BIMESTRAL</option>
-                <option value="trimestral">TRIMESTRAL</option>
-                <option value="semestral">SEMESTRAL</option>
-                <option value="anual">ANUAL</option>
-                <option value="personalizada">PERSONALIZADA</option>
+                <option value="diaria" className="bg-[var(--surface)] text-[var(--text-main)]">DIÁRIA</option>
+                <option value="semanal" className="bg-[var(--surface)] text-[var(--text-main)]">SEMANAL</option>
+                <option value="quinzenal" className="bg-[var(--surface)] text-[var(--text-main)]">QUINZENAL</option>
+                <option value="mensal" className="bg-[var(--surface)] text-[var(--text-main)]">MENSAL</option>
+                <option value="bimestral" className="bg-[var(--surface)] text-[var(--text-main)]">BIMESTRAL</option>
+                <option value="trimestral" className="bg-[var(--surface)] text-[var(--text-main)]">TRIMESTRAL</option>
+                <option value="semestral" className="bg-[var(--surface)] text-[var(--text-main)]">SEMESTRAL</option>
+                <option value="anual" className="bg-[var(--surface)] text-[var(--text-main)]">ANUAL</option>
+                <option value="personalizada" className="bg-[var(--surface)] text-[var(--text-main)]">PERSONALIZADA</option>
               </select>
             </div>
 
             {recurrenceType === 'personalizada' && (
               <div className="space-y-2">
-                <label className="text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">Dias</label>
+                <label className="text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">Dias</label>
                 <input 
                   type="number"
                   min="1"
-                  className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-sm font-medium"
+                  className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] text-sm font-semibold"
                   {...register('recurrence_interval')}
                 />
               </div>
             )}
 
             <div className="space-y-2 sm:col-span-2">
-              <label className="text-[8px] font-black text-silver-brushed/30 uppercase tracking-[0.3em] ml-1">Expiração</label>
+              <label className="text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">Expiração</label>
               <input 
                 type="date"
-                className="w-full bg-black/20 silver-border rounded-xl p-4 text-silver-polished text-sm font-medium focus:border-silver-brushed/30 focus:ring-0 transition-all shadow-inner"
+                className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] text-sm font-semibold focus:border-[var(--text-muted)] focus:ring-0 transition-all shadow-inner"
                 {...register('recurrence_end_date')}
               />
             </div>
@@ -330,20 +330,20 @@ export function MovementForm({
 
       {/* Footer Actions */}
       {!hideFooter && (
-        <div className="flex gap-4 pt-6 border-t border-silver-brushed/5">
+        <div className="flex gap-4 pt-6 border-t border-[var(--border)]">
           <button 
             type="button"
             onClick={onCancel}
-            className="flex-1 py-4 px-6 rounded-xl border border-silver-brushed/10 text-silver-brushed/30 font-black uppercase tracking-[0.3em] text-[9px] hover:bg-white/5 transition-all active:scale-95 silver-border"
+            className="flex-1 py-4 px-6 rounded-xl border border-[var(--border)] text-zinc-600 dark:text-silver-brushed/60 font-black uppercase tracking-[0.2em] text-[10px] hover:bg-[var(--surface-accent)]/30 dark:hover:bg-white/5 transition-all active:scale-95"
           >
             Retornar
           </button>
           <button 
             type="submit"
             disabled={loading}
-            className="flex-[2] py-4 px-6 rounded-xl bg-wood-teak text-silver-polished font-black uppercase tracking-[0.4em] text-[9px] hover:scale-[1.02] active:scale-98 transition-all shadow-2xl flex items-center justify-center gap-2 border border-white/10"
+            className="flex-[2] py-4 px-6 rounded-xl bg-wood-teak text-white dark:text-silver-polished font-black uppercase tracking-[0.22em] text-[10px] hover:scale-[1.01] active:scale-98 transition-all shadow-2xl flex items-center justify-center gap-2 border border-white/10"
           >
-            {loading ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="opacity-40" /> Validar Registro</>}
+            {loading ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="opacity-60" /> Validar Registro</>}
           </button>
         </div>
       )}

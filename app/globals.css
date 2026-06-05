@@ -48,9 +48,9 @@ html[data-theme="light"] {
   --bg: #F3F4F6;
   --surface: #FFFFFF;
   --surface-accent: #E5E7EB;
-  --wood-walnut: #78350F;
-  --wood-teak: #92400E;
-  --silver-brushed: #4B5563;
+  --wood-walnut: #F1F5F9;
+  --wood-teak: #0F172A;
+  --silver-brushed: #374151;
   --text-main: #111827;
   --text-muted: #4B5563;
   --primary: #111827;
@@ -61,10 +61,7 @@ html[data-theme="light"] {
   --border: rgba(0, 0, 0, 0.12);
   
   --shadow-executive: 0 10px 30px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.05);
-  --wood-grain: linear-gradient(135deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%) -50px 0,
-                linear-gradient(225deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%) -50px 0,
-                linear-gradient(315deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%),
-                linear-gradient(45deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%);
+  --wood-grain: none;
 }
 
 body {

@@ -24,32 +24,32 @@ interface MovementCardProps {
 const TYPE_CONFIG: Record<MovementType, { icon: React.ReactNode, color: string, label: string }> = {
   entrada: { 
     icon: <ArrowDownLeft size={16} />, 
-    color: 'text-emerald-400 bg-emerald-400/10', 
+    color: 'text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-400/10', 
     label: 'Entrada' 
   },
   saida_fixa: { 
     icon: <Wallet size={16} />, 
-    color: 'text-rose-400 bg-rose-400/10', 
+    color: 'text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-400/10', 
     label: 'Saída Fixa' 
   },
   gasto_diario: { 
     icon: <Coffee size={16} />, 
-    color: 'text-amber-400 bg-amber-400/10', 
+    color: 'text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10', 
     label: 'Gasto Diário' 
   },
   economia: { 
     icon: <Shield size={16} />, 
-    color: 'text-cyan-400 bg-cyan-400/10', 
+    color: 'text-cyan-700 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-400/10', 
     label: 'Economia' 
   },
   cartao: { 
     icon: <CreditCard size={16} />, 
-    color: 'text-purple-400 bg-purple-400/10', 
+    color: 'text-purple-700 dark:text-purple-400 bg-purple-100 dark:bg-purple-400/10', 
     label: 'Cartão' 
   },
   cobranca: { 
     icon: <HandCoins size={16} />, 
-    color: 'text-orange-400 bg-orange-400/10', 
+    color: 'text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-400/10', 
     label: 'Cobrança' 
   },
 }
@@ -62,7 +62,7 @@ export function MovementCard({ movement, onClick }: MovementCardProps) {
   return (
     <button
       onClick={() => onClick(movement)}
-      className={`w-full flex items-center justify-between p-4 rounded-2xl bg-[var(--glass)] border border-[var(--border)] hover:bg-zinc-900/40 transition-all group active:scale-[0.98] ${isCobranca && !movement.is_paid ? 'border-orange-500/20' : ''}`}
+      className={`w-full flex items-center justify-between p-4 rounded-2xl bg-[var(--glass)] border border-[var(--border)] hover:bg-[var(--surface-accent)]/40 hover:border-[var(--silver-brushed)]/20 transition-all group active:scale-[0.98] ${isCobranca && !movement.is_paid ? 'border-orange-500/30' : ''}`}
     >
       <div className="flex items-center gap-4">
         <div className={`p-3 rounded-xl ${config.color} group-hover:scale-110 transition-transform relative`}>
@@ -79,30 +79,30 @@ export function MovementCard({ movement, onClick }: MovementCardProps) {
             {movement.debtor_name && <span className="text-[var(--text-muted)] font-normal text-xs ml-2">({movement.debtor_name})</span>}
           </h4>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className={`text-[10px] font-black uppercase tracking-widest ${isCobranca && !movement.is_paid ? 'text-orange-400' : 'text-[var(--text-muted)]'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isCobranca && !movement.is_paid ? 'text-orange-600 dark:text-orange-450' : 'text-[var(--text-muted)]'}`}>
               {isCobranca ? (movement.is_paid ? 'Cobrança Recebida' : 'Cobrança Pendente') : config.label}
             </span>
             {movement.tag && (
               <>
-                <span className="text-zinc-800">•</span>
+                <span className="text-[var(--text-muted)]/50">•</span>
                 <span className="text-[10px] font-bold text-[var(--primary)] lowercase">
                   #{movement.tag}
                 </span>
               </>
             )}
             {movement.is_recurring && (
-              <Repeat size={10} className="text-zinc-600" />
+              <Repeat size={10} className="text-zinc-500 dark:text-zinc-400" />
             )}
           </div>
         </div>
       </div>
 
       <div className="text-right">
-        <p className={`text-sm font-black ${isNegative ? 'text-[var(--text-main)]' : (isCobranca && !movement.is_paid ? 'text-orange-400' : 'text-[var(--success)]')}`}>
+        <p className={`text-sm font-black ${isNegative ? 'text-[var(--text-main)]' : (isCobranca && !movement.is_paid ? 'text-orange-600 dark:text-orange-400' : 'text-[var(--success)]')}`}>
           {isNegative ? '-' : '+'} R$ {Number(movement.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </p>
         {isCobranca && movement.due_date && !movement.is_paid && (
-          <p className="text-[8px] text-orange-400/50 font-bold uppercase mt-0.5">
+          <p className="text-[9px] text-orange-600 dark:text-orange-400/80 font-black uppercase mt-0.5 tracking-wider">
             Vence {format(parseISO(movement.due_date), "dd/MM", { locale: ptBR })}
           </p>
         )}
