@@ -17,13 +17,15 @@ import { StructuralTab } from '@/components/metrics/StructuralTab'
 import { DailyBalanceHeader } from '@/components/metrics/DailyBalanceHeader'
 import { CobrancasSummary } from '@/components/metrics/CobrancasSummary'
 import { RollingBalanceEngine } from '@/services/RollingBalanceEngine'
-import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock, Activity, RotateCcw } from 'lucide-react'
+import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock, Activity, RotateCcw, Sun, Moon } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import { LoginPage } from '@/components/auth/LoginPage'
 
 export default function MetricsPage() {
   const { user, loading: authLoading, signOut, isDbConnected, isOffline } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState<'metrics' | 'movements' | 'progression' | 'structural'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
@@ -137,16 +139,27 @@ export default function MetricsPage() {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => refresh()}
-              className="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 font-bold py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+              className="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 font-bold py-4 rounded-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg cursor-pointer text-sm"
             >
               <RotateCcw size={16} />
               Tentar Novamente
             </button>
             <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('financeira_local_mode', 'true');
+                  window.location.reload();
+                }
+              }}
+              className="flex-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold py-4 rounded-2xl transition-all active:scale-[0.98] text-sm border border-amber-500/20 cursor-pointer"
+            >
+              Forçar Modo Local (Offline)
+            </button>
+            <button
               onClick={() => window.location.reload()}
               className="px-6 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold py-4 rounded-2xl transition-all active:scale-[0.98] text-sm border border-zinc-800/80 cursor-pointer"
             >
-              Recarregar Página
+              Recarregar
             </button>
           </div>
         </div>
@@ -199,6 +212,16 @@ export default function MetricsPage() {
             {!isOffline ? <Wifi size={10} className="text-emerald-400" /> : <WifiOff size={10} className="text-amber-400" />}
             {!isOffline ? 'Rede Ativa' : 'Desconectado'}
           </div>
+
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className="px-3 py-1.5 bg-silver-brushed/10 hover:bg-silver-brushed/20 border border-silver-brushed/20 text-silver-polished rounded-full text-[9px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+            title={theme === 'dark' ? "Ativar Modo Claro" : "Ativar Modo Escuro"}
+          >
+            {theme === 'dark' ? <Sun size={10} className="text-amber-400" /> : <Moon size={10} className="text-indigo-400/90" />}
+            {theme === 'dark' ? "Modo Claro" : "Modo Escuro"}
+          </button>
 
           {/* Sign Out Action */}
           {user && (
@@ -377,16 +400,9 @@ export default function MetricsPage() {
         )}
       </AnimatePresence>
 
-      {/* Floating Action Button */}
-      <FloatingActionButton 
-        onRefresh={refresh} 
-        activeTab={activeTab}
-        onAddStructuralExpense={() => setAddStructuralTrigger(prev => prev + 1)}
-      />
-      
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-8 flex justify-center z-40">
-        <div className="bg-wood-teak border-t border-white/5 rounded-[40px] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex gap-1 sm:gap-2 relative overflow-hidden group">
+        <div className="bg-wood-teak border-t border-white/5 rounded-[40px] p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex gap-1 sm:gap-2 relative overflow-hidden group items-center">
           <div className="absolute inset-0 bg-black/10 pointer-events-none" />
           <button
             onClick={() => setActiveTab('metrics')}
@@ -404,6 +420,15 @@ export default function MetricsPage() {
           >
             Custo Fixo
           </button>
+
+          {/* Central Context-Aware Dynamic FAB */}
+          <FloatingActionButton 
+            onRefresh={refresh} 
+            activeTab={activeTab}
+            onAddStructuralExpense={() => setAddStructuralTrigger(prev => prev + 1)}
+            isInline={true}
+          />
+
           <button
             onClick={() => setActiveTab('progression')}
             className={`px-3 sm:px-6 py-3 sm:py-4 rounded-[32px] text-[9px] sm:text-[10px] font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] transition-all relative z-10 ${

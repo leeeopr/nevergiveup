@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
-import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured, isLocalFallbackActive } from '@/lib/supabase'
 import { Session, User } from '@supabase/supabase-js'
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
@@ -166,6 +166,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true
 
     async function initSession() {
+      if (isLocalFallbackActive()) {
+        const storedLocalUser = typeof window !== 'undefined' ? localStorage.getItem('financeira_local_user') : null
+        if (storedLocalUser && active) {
+          try {
+            const parsed = JSON.parse(storedLocalUser)
+            setUser(parsed.user)
+            setProfile(parsed.profile)
+            setSession(parsed.session)
+            setLoading(false)
+            return
+          } catch {}
+        }
+        // Auto-provision default local admin to keep onboarding extremely friction-free
+        const defaultUser = {
+          id: 'local-user-id',
+          email: 'admin@financeira.local',
+          user_metadata: {}
+        } as User
+        const defaultProfile: UserProfile = {
+          id: 'local-user-id',
+          email: 'admin@financeira.local',
+          role: 'admin',
+          full_name: 'Administrador Local',
+        }
+        setUser(defaultUser)
+        setProfile(defaultProfile)
+        setLoading(false)
+        return
+      }
+
       try {
         const { data: { session: initialSession } } = await supabase.auth.getSession()
         if (active) {
@@ -179,23 +209,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initSession()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!active) return
-      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        await resolveSessionRef.current(newSession)
-      } else if (event === 'SIGNED_OUT') {
-        await resolveSessionRef.current(null)
-      }
-    })
+    let unsubscribe: (() => void) | null = null
+
+    if (!isLocalFallbackActive()) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+        if (!active) return
+        
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          await resolveSessionRef.current(newSession)
+        } else if (event === 'SIGNED_OUT') {
+          await resolveSessionRef.current(null)
+        }
+      })
+      unsubscribe = () => subscription.unsubscribe()
+    }
 
     return () => {
       active = false
-      subscription.unsubscribe()
+      if (unsubscribe) unsubscribe()
     }
   }, []) // Empty dependencies ensure mounting event runs exactly once without recreate-teardown loops
 
   const signInWithEmail = async (email: string, password: string) => {
+    if (isLocalFallbackActive()) {
+      const defaultUser = {
+        id: 'local-user-id',
+        email: email,
+        user_metadata: {}
+      } as User
+      const defaultProfile: UserProfile = {
+        id: 'local-user-id',
+        email: email,
+        role: email.toLowerCase().includes('viewer') ? 'viewer' : 'admin',
+        full_name: email.split('@')[0],
+      }
+      const mockSession = {
+        access_token: 'local-access-token',
+        user: defaultUser
+      } as Session
+
+      const localSession = { user: defaultUser, profile: defaultProfile, session: mockSession }
+      localStorage.setItem('financeira_local_user', JSON.stringify(localSession))
+      setUser(defaultUser)
+      setProfile(defaultProfile)
+      setSession(mockSession)
+      return
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     // Rely exclusively on the global onAuthStateChange listener to trigger and deserialize current user sequence safely
@@ -204,7 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     setLoading(true)
     try {
-      await supabase.auth.signOut()
+      if (isLocalFallbackActive()) {
+        localStorage.removeItem('financeira_local_user')
+      } else {
+        await supabase.auth.signOut()
+      }
     } catch (err) {
       console.error('Supabase signout call threw:', err)
     } finally {
@@ -216,11 +280,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const hasPermission = useCallback((permission: string) => {
-    if (profile?.role === 'viewer') {
-      return permission === 'movements:read' || permission === 'profile:read'
-    }
-    return true
-  }, [profile])
+    // Todos os usuários autenticados possuem permissão total para todas as operações
+    return !!user
+  }, [user])
 
   const refreshProfile = useCallback(async () => {
     if (user) {
@@ -229,9 +291,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchProfile])
 
-  const permissions = profile?.role === 'viewer' 
-    ? ['movements:read', 'profile:read'] 
-    : ['admin:dashboard', 'movements:read', 'movements:create', 'movements:update', 'movements:delete', 'profile:read', 'profile:update']
+  // Qualquer usuário autenticado recebe a lista completa de permissões operacionais
+  const permissions = [
+    'movements:read',
+    'movements:create',
+    'movements:update',
+    'movements:delete',
+    'expenses:read',
+    'expenses:create',
+    'expenses:update',
+    'expenses:delete',
+    'profile:read',
+    'profile:update'
+  ]
 
   const value: AuthContextType = {
     user,

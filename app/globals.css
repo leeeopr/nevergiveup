@@ -1,35 +1,41 @@
 @import "tailwindcss";
 
 @theme {
-  --color-velvet-deep: #050816;
-  --color-velvet-soft: #0A1128;
-  --color-wood-walnut: #2D1E14;
-  --color-wood-teak: #3D2B1F;
-  --color-silver-brushed: #C2C5CC;
-  --color-silver-polished: #E5E7EB;
+  --color-velvet-deep: var(--bg);
+  --color-velvet-soft: var(--surface);
+  --color-wood-walnut: var(--wood-walnut);
+  --color-wood-teak: var(--wood-teak);
+  --color-silver-brushed: var(--silver-brushed);
+  --color-silver-polished: var(--text-main);
   
-  --color-brand-bg: #050816;
-  --color-brand-surface: #0A1128;
-  --color-brand-accent: #3D2B1F;
-  --color-brand-primary: #C2C5CC;
-  --color-brand-success: #4ade80;
-  --color-brand-danger: #fb7185;
-  --color-brand-warning: #facc15;
-  --color-brand-muted: #6B7280;
+  --color-brand-bg: var(--bg);
+  --color-brand-surface: var(--surface);
+  --color-brand-accent: var(--surface-accent);
+  --color-brand-primary: var(--primary);
+  --color-brand-success: var(--success);
+  --color-brand-danger: var(--danger);
+  --color-brand-warning: var(--warning);
+  --color-brand-muted: var(--text-muted);
 }
 
 :root {
+  /* Default Theme (Dark Mode) */
   --bg: #050816;
-  --surface: #0A1128;
-  --surface-accent: #3D2B1F;
+  --surface: #0a1128;
+  --surface-accent: #1e1e2f;
+  --wood-walnut: #2D1E14;
+  --wood-teak: #3D2B1F;
+  --silver-brushed: #C2C5CC;
+  --text-main: #E5E7EB;
+  --text-muted: #9CA3AF;
   --primary: #C2C5CC;
   --success: #4ADE80;
   --danger: #FB7185;
   --warning: #FACC15;
-  --text-main: #E5E7EB;
-  --text-muted: #9CA3AF;
   --glass: rgba(10, 17, 40, 0.6);
   --border: rgba(194, 197, 204, 0.15);
+  
+  --shadow-executive: 0 20px 50px rgba(0,0,0,0.5);
   --wood-grain: linear-gradient(135deg, rgba(61, 43, 31, 0.05) 25%, transparent 25%) -50px 0,
                 linear-gradient(225deg, rgba(61, 43, 31, 0.05) 25%, transparent 25%) -50px 0,
                 linear-gradient(315deg, rgba(61, 43, 31, 0.05) 25%, transparent 25%),
@@ -37,11 +43,35 @@
   --wood-size: 100px 100px;
 }
 
+html[data-theme="light"] {
+  /* Light Theme */
+  --bg: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-accent: #E5E7EB;
+  --wood-walnut: #78350F;
+  --wood-teak: #92400E;
+  --silver-brushed: #4B5563;
+  --text-main: #111827;
+  --text-muted: #4B5563;
+  --primary: #111827;
+  --success: #16A34A;
+  --danger: #DC2626;
+  --warning: #D97706;
+  --glass: rgba(255, 255, 255, 0.85);
+  --border: rgba(0, 0, 0, 0.12);
+  
+  --shadow-executive: 0 10px 30px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.05);
+  --wood-grain: linear-gradient(135deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%) -50px 0,
+                linear-gradient(225deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%) -50px 0,
+                linear-gradient(315deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%),
+                linear-gradient(45deg, rgba(146, 64, 14, 0.03) 25%, transparent 25%);
+}
+
 body {
   background-color: var(--bg);
   background-image: 
-    radial-gradient(circle at 50% -20%, #0A1128 0%, transparent 60%),
-    radial-gradient(circle at 0% 100%, #050816 0%, transparent 40%);
+    radial-gradient(circle at 50% -20%, var(--surface) 0%, transparent 60%),
+    radial-gradient(circle at 0% 100%, var(--bg) 0%, transparent 40%);
   color: var(--text-main);
   min-height: 100vh;
   letter-spacing: -0.01em;
@@ -49,17 +79,20 @@ body {
 
 @layer utilities {
   .executive-card {
-    @apply bg-velvet-soft/80 border border-silver-brushed/10 backdrop-blur-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)];
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(24px);
+    box-shadow: var(--shadow-executive);
   }
   
   .wood-panel {
-    background-color: var(--color-wood-teak);
+    background-color: var(--wood-teak);
     background-image: var(--wood-grain);
     background-size: var(--wood-size);
   }
 
   .silver-border {
-    @apply border border-silver-brushed/20;
+    border: 1px solid var(--border);
   }
 
   .no-scrollbar::-webkit-scrollbar {
@@ -78,9 +111,10 @@ body {
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-silver-brushed/10 rounded-full;
+    background-color: var(--border);
+    border-radius: 9999px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-silver-brushed/20;
+    background-color: var(--silver-brushed);
   }
 }

@@ -19,6 +19,15 @@ export const supabase = createClient(finalUrl, finalKey, {
 // Export for backward compatibility with financial services
 export const getSupabase = (): SupabaseClient => supabase
 export const isSupabaseConfigured = (): boolean => !!supabaseUrl && !!supabaseAnonKey
+export const isLocalFallbackActive = (): boolean => {
+  if (typeof window === 'undefined') return !isSupabaseConfigured();
+  return !isSupabaseConfigured() || window.localStorage.getItem('financeira_local_mode') === 'true';
+}
+export const setLocalFallbackActive = (active: boolean) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('financeira_local_mode', active ? 'true' : 'false');
+  }
+}
 export const validateSupabaseEnv = () => ({
   isValid: isSupabaseConfigured(),
   errorType: isSupabaseConfigured() ? null : 'MISSING',

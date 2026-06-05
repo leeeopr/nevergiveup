@@ -28,9 +28,10 @@ export interface FloatingActionButtonProps {
   onRefresh: () => void
   activeTab: 'metrics' | 'movements' | 'progression' | 'structural'
   onAddStructuralExpense?: () => void
+  isInline?: boolean
 }
 
-export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpense }: FloatingActionButtonProps) {
+export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpense, isInline = false }: FloatingActionButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<MovementType | null>(null)
   const [saving, setSaving] = useState(false)
@@ -111,6 +112,62 @@ export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpe
       </button>
     </div>
   ) : null
+
+  if (isInline) {
+    return (
+      <>
+        <motion.button
+          whileHover={{ scale: 1.1, rotate: 90 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleFabClick}
+          title={getTooltipText()}
+          className="w-10 h-10 sm:w-11 sm:h-11 rounded-[16px] bg-wood-teak border border-white/20 shadow-lg flex items-center justify-center text-silver-polished relative overflow-hidden group shrink-0 mx-1.5 self-center cursor-pointer"
+        >
+          <div className="absolute inset-0 bg-gradient-to-tr from-white/15 via-transparent to-black/30 pointer-events-none" />
+          <Plus size={20} className="group-hover:text-white transition-colors" strokeWidth={2.5} />
+        </motion.button>
+
+        <DialogShell 
+          isOpen={isOpen} 
+          onClose={handleClose}
+          header={header}
+          footer={footer}
+        >
+          {!selectedType ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
+              {ACTION_OPTIONS.map((opt) => (
+                <motion.button
+                  key={opt.type}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setSelectedType(opt.type)}
+                  className="flex flex-col items-center justify-center p-6 sm:p-8 rounded-[28px] sm:rounded-[36px] bg-white/[0.02] border border-silver-brushed/5 transition-all hover:bg-white/5 hover:border-silver-brushed/20 aspect-square text-center gap-4 sm:gap-6 shadow-xl group"
+                >
+                  <div className={`p-4 sm:p-6 rounded-[20px] sm:rounded-[24px] silver-border bg-velvet-deep/50 transform group-hover:rotate-6 transition-transform ${opt.color}`}>
+                    {opt.icon}
+                  </div>
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.3em] text-silver-brushed/40 group-hover:text-silver-polished transition-colors text-center w-full">
+                    {opt.label}
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+          ) : (
+            <div className="px-0 sm:px-2">
+              <MovementForm 
+                formId="create-movement-form"
+                hideFooter={true}
+                onLoadingChange={setSaving}
+                type={selectedType} 
+                onCancel={() => setSelectedType(null)} 
+                onSuccess={handleSuccess}
+              />
+            </div>
+          )}
+        </DialogShell>
+      </>
+    )
+  }
 
   return (
     <>

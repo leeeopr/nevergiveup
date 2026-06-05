@@ -2,11 +2,13 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { Mail, Lock, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Mail, Lock, Loader2, AlertCircle, Eye, EyeOff, Sun, Moon } from 'lucide-react'
 
 export function LoginPage() {
   const { signInWithEmail, isOffline } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -56,18 +58,30 @@ export function LoginPage() {
   }
 
   return (
-    <div id="login-container" className="min-h-screen w-full flex items-center justify-center bg-zinc-950 p-4 relative overflow-hidden">
+    <div id="login-container" className="min-h-screen w-full flex items-center justify-center bg-velvet-deep p-4 relative overflow-hidden transition-colors duration-200">
       {/* Decorative ambient background glows */}
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-rose-500/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
 
-      <div id="login-card" className="w-full max-w-md bg-zinc-900 border border-zinc-850 rounded-[32px] p-8 shadow-2xl relative">
+      {/* Top Right Floating Switcher */}
+      <div className="absolute top-6 right-6">
+        <button
+          onClick={toggleTheme}
+          className="px-3 py-1.5 bg-silver-brushed/10 hover:bg-silver-brushed/20 border border-silver-brushed/20 text-silver-polished rounded-full text-[9px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+          title={theme === 'dark' ? "Ativar Modo Claro" : "Ativar Modo Escuro"}
+        >
+          {theme === 'dark' ? <Sun size={12} className="text-amber-400" /> : <Moon size={12} className="text-indigo-500/95" />}
+          {theme === 'dark' ? "Modo Claro" : "Modo Escuro"}
+        </button>
+      </div>
+
+      <div id="login-card" className="w-full max-w-md bg-velvet-soft border border-silver-brushed/10 rounded-[32px] p-8 shadow-2xl relative transition-all duration-200">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 mb-4">
             <Lock className="text-rose-400" size={22} />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white font-sans">Financeira Pro</h1>
-          <p className="text-zinc-400 text-[10px] mt-1.5 font-bold font-mono uppercase tracking-wider">Acesso Operacional</p>
+          <h1 className="text-2xl font-black tracking-tight text-silver-polished font-sans">Financeira Pro</h1>
+          <p className="text-silver-brushed/50 text-[10px] mt-1.5 font-bold font-mono uppercase tracking-wider">Acesso Operacional</p>
         </div>
 
         {/* Missing Env Prompt (Discreet advice without blockages) */}
@@ -99,11 +113,11 @@ export function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4 text-left">
           {/* Email input */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono" htmlFor="email">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-silver-brushed/40 font-mono" htmlFor="email">
               E-mail corporativo
             </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-silver-brushed/40">
                 <Mail size={16} />
               </span>
               <input
@@ -112,7 +126,7 @@ export function LoginPage() {
                 placeholder="nome@dominio.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 bg-zinc-950 border border-zinc-800 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/40 transition-all font-medium"
+                className="w-full pl-11 pr-4 py-3.5 bg-velvet-deep/40 border border-silver-brushed/10 rounded-2xl text-sm text-silver-polished placeholder-silver-brushed/30 focus:outline-none focus:border-rose-500/40 transition-all font-medium"
                 required
               />
             </div>
@@ -120,11 +134,11 @@ export function LoginPage() {
 
           {/* Password input */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono" htmlFor="password">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-silver-brushed/40 font-mono" htmlFor="password">
               Senha de segurança
             </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-silver-brushed/40">
                 <Lock size={16} />
               </span>
               <input
@@ -133,13 +147,13 @@ export function LoginPage() {
                 placeholder="Sua senha secreta"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-11 pr-12 py-3.5 bg-zinc-950 border border-zinc-800 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/40 transition-all font-medium"
+                className="w-full pl-11 pr-12 py-3.5 bg-velvet-deep/40 border border-silver-brushed/10 rounded-2xl text-sm text-silver-polished placeholder-silver-brushed/30 focus:outline-none focus:border-rose-500/40 transition-all font-medium"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-silver-brushed/40 hover:text-silver-polished transition-colors"
                 id="toggle-password"
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -160,7 +174,7 @@ export function LoginPage() {
             id="login-submit-button"
             type="submit"
             disabled={loading}
-            className="w-full bg-white hover:bg-zinc-100 text-zinc-950 font-bold py-3.5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer shadow-lg text-sm mt-2"
+            className="w-full bg-silver-brushed text-velvet-deep hover:opacity-90 font-bold py-3.5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer shadow-lg text-sm mt-2"
           >
             {loading ? (
               <>
