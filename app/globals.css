@@ -32,6 +32,9 @@
   --success: #4ADE80;
   --danger: #FB7185;
   --warning: #FACC15;
+  --cyan: #22D3EE;
+  --purple: #C084FC;
+  --orange: #FB923C;
   --glass: rgba(10, 17, 40, 0.6);
   --border: rgba(194, 197, 204, 0.15);
   
@@ -57,6 +60,9 @@ html[data-theme="light"] {
   --success: #16A34A;
   --danger: #DC2626;
   --warning: #D97706;
+  --cyan: #0891B2;
+  --purple: #7C3AED;
+  --orange: #EA580C;
   --glass: rgba(255, 255, 255, 0.85);
   --border: rgba(0, 0, 0, 0.12);
   

@@ -11,7 +11,7 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 export const metricsService = {
-  calculateMonthlyMetrics(movements: FinancialMovement[], year: number, month: number): MetricSummary {
+  calculateMonthlyMetrics(movements: FinancialMovement[], year: number, month: number, structuralCost?: number): MetricSummary {
     const totals = {
       entrada: 0,
       saida_fixa: 0,
@@ -53,14 +53,19 @@ export const metricsService = {
 
     const dailyAverageReal = totals.gasto_diario / daysElapsed
 
+    // New rules for Estimativa de Gasto Mensal & Orçamento Diário
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const estimativaMensal = structuralCost !== undefined && structuralCost > 0 ? structuralCost : 3000
+    const orcamentoDiario = estimativaMensal / daysInMonth
+
     return {
       performance,
       performanceChange: 0,
       savingsRate,
       savingsAmount: totals.economia,
       realCostOfLiving,
-      weeklyCost: realCostOfLiving / 4,
-      dailyCost: realCostOfLiving / 30,
+      weeklyCost: orcamentoDiario * 7,
+      dailyCost: orcamentoDiario,
       dailyAverageReal,
       dailyAverageChange: 0,
       balanceProjection,
@@ -72,7 +77,9 @@ export const metricsService = {
         { name: 'Cartão', value: totals.cartao, color: TYPE_COLORS.cartao },
         { name: 'Economia', value: totals.economia, color: TYPE_COLORS.economia },
         { name: 'Cobranças', value: totals.cobranca_pendente, color: TYPE_COLORS.cobranca }
-      ].filter(d => d.value > 0)
+      ].filter(d => d.value > 0),
+      estimativaMensal,
+      orcamentoDiario
     }
   }
 }

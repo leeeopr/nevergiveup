@@ -330,7 +330,7 @@ export default function MetricsPage() {
                   />
 
                   <CostOfLivingCard 
-                    monthly={metrics.realCostOfLiving}
+                    monthly={metrics.estimativaMensal}
                     weekly={metrics.weeklyCost}
                     daily={metrics.dailyCost}
                   />

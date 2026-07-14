@@ -48,4 +48,6 @@ export interface MetricSummary {
   pendingReceivables: number;
   receivedAmount: number;
   distribution: { name: string; value: number; color: string }[];
+  estimativaMensal: number;
+  orcamentoDiario: number;
 }

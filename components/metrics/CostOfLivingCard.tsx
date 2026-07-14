@@ -15,7 +15,7 @@ export function CostOfLivingCard({ monthly, weekly, daily }: CostOfLivingCardPro
         <Sun size={18} className="text-silver-brushed/40" />
       </div>
       <div>
-        <p className="text-[10px] text-silver-brushed/30 font-black uppercase tracking-[0.2em] mb-3">Fluxo de Consumo Real</p>
+        <p className="text-[10px] text-silver-brushed/30 font-black uppercase tracking-[0.2em] mb-3">Estimativa de Gasto Mensal</p>
         <div className="text-4xl font-black tracking-tighter mb-8 text-silver-polished flex items-baseline gap-2">
           <span className="text-xl text-silver-brushed/20 whitespace-nowrap">R$</span>
           <Counter value={monthly} prefix="" />
@@ -35,7 +35,7 @@ export function CostOfLivingCard({ monthly, weekly, daily }: CostOfLivingCardPro
           <div className="bg-velvet-deep/50 p-4 rounded-2xl silver-border group hover:bg-velvet-deep transition-colors">
             <div className="flex items-center gap-2 mb-2">
               <Sun size={10} className="text-silver-brushed/20" />
-              <p className="text-[9px] text-silver-brushed/30 font-black uppercase tracking-widest">Diário</p>
+              <p className="text-[9px] text-silver-brushed/30 font-black uppercase tracking-widest">Orçamento Diário</p>
             </div>
             <p className="text-base font-black text-silver-polished tracking-tighter">
                <span className="text-[10px] opacity-20 mr-1">R$</span>

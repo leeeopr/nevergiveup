@@ -108,22 +108,22 @@ export function StructuralExpenseForm({
     <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Amount Input - Main Focus */}
       <div className="relative group">
-        <label className="text-[10px] sm:text-[11px] font-black text-zinc-650 dark:text-silver-brushed/60 uppercase tracking-[0.3em] mb-3 block ml-1">
+        <label className="text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.3em] mb-3 block ml-1">
           Custo Mensal Estimado
         </label>
         <div className="flex items-center gap-3 text-4xl sm:text-6xl font-black text-[var(--text-main)] tracking-tighter">
-          <span className="text-zinc-500 dark:text-silver-brushed/30 text-2xl select-none font-bold">R$</span>
+          <span className="text-[var(--text-muted)]/60 text-2xl select-none font-bold">R$</span>
           <input
             type="number"
             step="0.01"
             placeholder="0,00"
             autoFocus
-            className="w-full bg-transparent border-none focus:ring-0 p-0 placeholder:text-zinc-400 dark:placeholder:text-silver-brushed/20 font-black text-[var(--text-main)]"
+            className="w-full bg-transparent border-none focus:ring-0 p-0 placeholder:text-[var(--text-muted)]/40 font-black text-[var(--text-main)]"
             {...register('amount', { required: true, min: 0.01 })}
           />
         </div>
         {errors.amount && (
-          <p className="text-rose-600 dark:text-rose-400 text-[10px] sm:text-[11px] uppercase font-black tracking-widest mt-2 ml-1">
+          <p className="text-[var(--danger)] text-[10px] sm:text-[11px] uppercase font-black tracking-widest mt-2 ml-1">
             Valor Mandatório
           </p>
         )}
@@ -133,17 +133,17 @@ export function StructuralExpenseForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Title */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1">
             <FileText size={12} className="opacity-60 text-[var(--text-muted)]" /> Identificador / Título
           </label>
           <input
             type="text"
             placeholder="Ex: Aluguel do Apartamento..."
-            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-zinc-500 dark:placeholder:text-silver-brushed/30 focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
+            className="w-full bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-[var(--text-muted)]/50 focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
             {...register('title', { required: true })}
           />
           {errors.title && (
-            <p className="text-rose-600 dark:text-rose-400 text-[10px] sm:text-[11px] uppercase font-black tracking-widest mt-1 ml-1">
+            <p className="text-[var(--danger)] text-[10px] sm:text-[11px] uppercase font-black tracking-widest mt-1 ml-1">
               Campo Obrigatório
             </p>
           )}
@@ -151,11 +151,11 @@ export function StructuralExpenseForm({
 
         {/* Category */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1">
             <Tag size={12} className="opacity-60 text-[var(--text-muted)]" /> Categoria Estrutural
           </label>
           <select
-            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner appearance-none cursor-pointer"
+            className="w-full bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner appearance-none cursor-pointer"
             {...register('category', { required: true })}
           >
             {CATEGORY_OPTIONS.map((opt) => (
@@ -168,11 +168,11 @@ export function StructuralExpenseForm({
 
         {/* Priority */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1">
             <Award size={12} className="opacity-60 text-[var(--text-muted)]" /> Nível de Sobrevivência (Prioridade)
           </label>
           <select
-            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner appearance-none cursor-pointer"
+            className="w-full bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner appearance-none cursor-pointer"
             {...register('priority', { required: true })}
           >
             {PRIORITY_OPTIONS.map((opt) => (
@@ -185,11 +185,11 @@ export function StructuralExpenseForm({
 
         {/* Recurrence (fixed periodic value) */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1">
             <HelpCircle size={12} className="opacity-60 text-[var(--text-muted)]" /> Periodicidade
           </label>
           <select
-            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner appearance-none cursor-pointer"
+            className="w-full bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner appearance-none cursor-pointer"
             {...register('recurrence', { required: true })}
           >
             <option value="mensal" className="bg-[var(--surface)] text-[var(--text-main)]">Mensal (Sustentação Direta)</option>
@@ -199,13 +199,13 @@ export function StructuralExpenseForm({
 
         {/* Description */}
         <div className="sm:col-span-2 space-y-2">
-          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-zinc-600 dark:text-silver-brushed/60 uppercase tracking-[0.2em] ml-1">
+          <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1">
             <FileText size={12} className="opacity-60 text-[var(--text-muted)]" /> Notas de Configuração / Detalhes
           </label>
           <textarea
             placeholder="Detalhes opcionais sobre o vencimento, reajuste ou especificidades do contrato..."
             rows={2}
-            className="w-full bg-slate-100/50 dark:bg-black/20 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-zinc-500 dark:placeholder:text-silver-brushed/30 focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
+            className="w-full bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-[var(--text-muted)]/50 focus:border-[var(--text-muted)] focus:ring-0 transition-all text-sm font-semibold shadow-inner"
             {...register('description')}
           />
         </div>
@@ -217,14 +217,14 @@ export function StructuralExpenseForm({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 py-4 px-6 rounded-xl border border-[var(--border)] text-zinc-600 dark:text-silver-brushed/60 font-black uppercase tracking-[0.2em] text-[10px] hover:bg-[var(--surface-accent)]/30 dark:hover:bg-white/5 transition-all active:scale-95"
+            className="flex-1 py-4 px-6 rounded-xl border border-[var(--border)] text-[var(--text-muted)] font-black uppercase tracking-[0.2em] text-[10px] hover:bg-[var(--surface-accent)]/30 transition-all active:scale-95 cursor-pointer"
           >
             Retornar
           </button>
           <button
             type="submit"
             disabled={loading}
-            className="flex-[2] py-4 px-6 rounded-xl bg-wood-teak text-white dark:text-silver-polished font-black uppercase tracking-[0.22em] text-[10px] hover:scale-[1.01] active:scale-98 transition-all shadow-2xl flex items-center justify-center gap-2 border border-white/10"
+            className="flex-[2] py-4 px-6 rounded-xl bg-wood-teak text-white font-black uppercase tracking-[0.22em] text-[10px] hover:scale-[1.01] active:scale-98 transition-all shadow-2xl flex items-center justify-center gap-2 border border-white/10 cursor-pointer"
           >
             {loading ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="opacity-60" /> Registrar Custo Vital</>}
           </button>

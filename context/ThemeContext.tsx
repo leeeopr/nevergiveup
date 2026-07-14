@@ -20,7 +20,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       if (stored === 'light' || stored === 'dark') {
         return stored
       }
-      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
     }
     return 'dark'
   })
@@ -28,9 +27,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       document.documentElement.setAttribute('data-theme', theme)
-      document.body.className = theme === 'dark' 
-        ? 'font-sans antialiased bg-velvet-deep text-silver-polished min-h-screen transition-colors duration-200' 
-        : 'font-sans antialiased bg-[#F4F6F9] text-[#111827] min-h-screen transition-colors duration-200'
+      document.body.className = 'font-sans antialiased min-h-screen transition-colors duration-200 bg-[var(--bg)] text-[var(--text-main)]'
     }
   }, [theme])
 
