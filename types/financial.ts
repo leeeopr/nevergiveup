@@ -50,4 +50,10 @@ export interface MetricSummary {
   distribution: { name: string; value: number; color: string }[];
   estimativaMensal: number;
   orcamentoDiario: number;
+  personalBudget: number;
+  personalBudgetUsed: number;
+  personalBudgetRemaining: number;
+  personalBudgetDailyRemaining: number;
+  personalBudgetPercentUsed: number;
+  personalBudgetProjected: number;
 }

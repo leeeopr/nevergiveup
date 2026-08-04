@@ -6,11 +6,28 @@ import { FinancialMovement, MetricSummary } from '@/types/financial'
 import { useAuth } from '@/context/AuthContext'
 
 export function useFinancialMetrics(year: number, month: number) {
+  const { user, loading: authLoading } = useAuth()
   const [movements, setMovements] = useState<FinancialMovement[]>([])
   const [structuralCost, setStructuralCost] = useState<number>(0)
+  const [personalBudget, setPersonalStateBudget] = useState<number>(() => {
+    if (typeof window !== 'undefined' && user?.id) {
+      const key = `personal_budget_${user.id}_${year}_${month}`
+      const saved = localStorage.getItem(key)
+      return saved !== null ? Number(saved) : 1200
+    }
+    return 1200
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const { user, loading: authLoading } = useAuth()
+
+  const updatePersonalBudget = useCallback((amount: number) => {
+    if (!user?.id) return
+    if (typeof window !== 'undefined') {
+      const key = `personal_budget_${user.id}_${year}_${month}`
+      localStorage.setItem(key, String(amount))
+      setPersonalStateBudget(amount)
+    }
+  }, [user, year, month, setPersonalStateBudget])
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -32,13 +49,20 @@ export function useFinancialMetrics(year: number, month: number) {
         console.error('Failed to load structural expenses in metrics hook:', structErr)
       }
 
+      // Load budget inside the async refresh flow
+      if (typeof window !== 'undefined') {
+        const key = `personal_budget_${user.id}_${year}_${month}`
+        const saved = localStorage.getItem(key)
+        setPersonalStateBudget(saved !== null ? Number(saved) : 1200)
+      }
+
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Refresh failed'))
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [user, year, month, setMovements, setLoading, setStructuralCost, setPersonalStateBudget, setError])
 
   useEffect(() => {
     if (!authLoading) {
@@ -48,11 +72,9 @@ export function useFinancialMetrics(year: number, month: number) {
   }, [refresh, authLoading])
 
   const metrics = useMemo(() => {
-    if (movements.length === 0 && !loading) {
-      return metricsService.calculateMonthlyMetrics([], year, month, structuralCost)
-    }
-    return metricsService.calculateMonthlyMetrics(movements, year, month, structuralCost)
-  }, [movements, year, month, loading, structuralCost])
+    const targetMovements = movements.length === 0 && !loading ? [] : movements
+    return metricsService.calculateMonthlyMetrics(targetMovements, year, month, structuralCost, personalBudget)
+  }, [movements, year, month, loading, structuralCost, personalBudget])
 
-  return { movements, metrics, loading, error, refresh }
+  return { movements, metrics, loading, error, refresh, updatePersonalBudget }
 }

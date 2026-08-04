@@ -12,6 +12,16 @@ export interface UserProfile {
   role: UserRole;
   full_name?: string | null;
   avatar_url?: string | null;
+  empresa_enabled?: boolean;
+  company_name?: string | null;
+  company_document?: string | null;
+  company_email?: string | null;
+  company_phone?: string | null;
+  company_address?: string | null;
+  company_city?: string | null;
+  company_state?: string | null;
+  company_zip?: string | null;
+  company_signature_url?: string | null;
   updated_at?: string;
 }
 
@@ -28,6 +38,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
   refreshProfile: () => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  toggleEmpresaMode: (enabled: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -61,15 +73,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sync user profile database row with local state (with immediate fallback)
   const fetchProfile = useCallback(async (userId: string, email: string | null): Promise<UserProfile> => {
+    const cachedEmpresaKey = `financeira_empresa_enabled_${userId}`
+    const localEmpresaVal = typeof window !== 'undefined' ? localStorage.getItem(cachedEmpresaKey) : null
+
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle()
 
       if (data) {
-        return data as UserProfile
+        const prof = data as UserProfile
+        if (localEmpresaVal === 'true' && !prof.empresa_enabled) {
+          prof.empresa_enabled = true
+          supabase.from('profiles').update({ empresa_enabled: true }).eq('id', userId).then()
+        } else if (prof.empresa_enabled && typeof window !== 'undefined') {
+          localStorage.setItem(cachedEmpresaKey, 'true')
+        }
+        return prof
       }
 
       // Safe fallback if profile is not created yet
@@ -79,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: 'admin',
         full_name: email ? email.split('@')[0] : 'Convidado',
         avatar_url: null,
+        empresa_enabled: localEmpresaVal === 'true',
         updated_at: new Date().toISOString()
       }
 
@@ -92,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: 'admin',
         full_name: email ? email.split('@')[0] : 'Convidado',
         avatar_url: null,
+        empresa_enabled: localEmpresaVal === 'true',
         updated_at: new Date().toISOString()
       }
     }
@@ -171,6 +195,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (storedLocalUser && active) {
           try {
             const parsed = JSON.parse(storedLocalUser)
+            const userId = parsed.user?.id || 'local-user-id'
+            const cachedEmpresa = typeof window !== 'undefined' ? localStorage.getItem(`financeira_empresa_enabled_${userId}`) : null
+            if (cachedEmpresa === 'true' && parsed.profile) {
+              parsed.profile.empresa_enabled = true
+            }
             setUser(parsed.user)
             setProfile(parsed.profile)
             setSession(parsed.session)
@@ -179,16 +208,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {}
         }
         // Auto-provision default local admin to keep onboarding extremely friction-free
+        const userId = 'local-user-id'
+        const cachedEmpresa = typeof window !== 'undefined' ? localStorage.getItem(`financeira_empresa_enabled_${userId}`) : null
         const defaultUser = {
-          id: 'local-user-id',
+          id: userId,
           email: 'admin@financeira.local',
           user_metadata: {}
         } as User
         const defaultProfile: UserProfile = {
-          id: 'local-user-id',
+          id: userId,
           email: 'admin@financeira.local',
           role: 'admin',
           full_name: 'Administrador Local',
+          empresa_enabled: cachedEmpresa === 'true'
         }
         setUser(defaultUser)
         setProfile(defaultProfile)
@@ -291,6 +323,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchProfile])
 
+  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
+    if (!user || !profile) return
+
+    const updatedProfile: UserProfile = {
+      ...profile,
+      ...updates,
+      updated_at: new Date().toISOString()
+    }
+
+    setProfile(updatedProfile)
+
+    if (typeof window !== 'undefined' && user.id && updates.empresa_enabled !== undefined) {
+      localStorage.setItem(`financeira_empresa_enabled_${user.id}`, String(updates.empresa_enabled))
+    }
+
+    if (isLocalFallbackActive()) {
+      const storedLocalUser = typeof window !== 'undefined' ? localStorage.getItem('financeira_local_user') : null
+      if (storedLocalUser) {
+        try {
+          const parsed = JSON.parse(storedLocalUser)
+          parsed.profile = updatedProfile
+          localStorage.setItem('financeira_local_user', JSON.stringify(parsed))
+        } catch {}
+      }
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: user.id,
+            email: user.email,
+            ...updates,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'id' }
+        )
+
+      if (error) {
+        console.warn('Error updating profile in Supabase:', error.message)
+      }
+    } catch (err) {
+      console.warn('Exception updating profile in Supabase:', err)
+    }
+  }, [user, profile])
+
+  const toggleEmpresaMode = useCallback(async (enabled: boolean) => {
+    await updateProfile({ empresa_enabled: enabled })
+  }, [updateProfile])
+
   // Qualquer usuário autenticado recebe a lista completa de permissões operacionais
   const permissions = [
     'movements:read',
@@ -317,7 +401,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithEmail,
     signOut,
     hasPermission,
-    refreshProfile
+    refreshProfile,
+    updateProfile,
+    toggleEmpresaMode
   }
 
   return (

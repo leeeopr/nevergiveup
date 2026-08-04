@@ -329,3 +329,228 @@ USING (auth.uid() = user_id);
 
 -- Index for performance
 CREATE INDEX IF NOT EXISTS idx_structural_expenses_user_id ON public.structural_expenses(user_id);
+
+-- 9. Google Calendar Integration Tables
+CREATE TABLE IF NOT EXISTS public.google_calendar_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE DEFAULT auth.uid(),
+    google_email TEXT,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at TIMESTAMPTZ,
+    selected_calendar_id TEXT DEFAULT 'primary',
+    auto_sync BOOLEAN DEFAULT TRUE,
+    default_reminder_minutes INTEGER DEFAULT 1440,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.google_calendar_connections ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own calendar connection" ON public.google_calendar_connections;
+CREATE POLICY "Users manage their own calendar connection"
+ON public.google_calendar_connections FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.google_calendar_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    financial_movement_id TEXT NOT NULL,
+    google_calendar_event_id TEXT NOT NULL,
+    google_calendar_id TEXT NOT NULL DEFAULT 'primary',
+    sync_status TEXT DEFAULT 'synced',
+    last_synced_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, financial_movement_id)
+);
+
+ALTER TABLE public.google_calendar_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own calendar events mapping" ON public.google_calendar_events;
+CREATE POLICY "Users manage their own calendar events mapping"
+ON public.google_calendar_events FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_events_user ON public.google_calendar_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_movement ON public.google_calendar_events(financial_movement_id);
+
+-- 10. Empresa (Clients & Receipts) Module
+-- User Profile Extensions for Empresa
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS empresa_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_name TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_document TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_phone TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_address TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_city TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_state TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_zip TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_signature_url TEXT;
+
+-- Clients Table
+CREATE TABLE IF NOT EXISTS public.clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    document TEXT,
+    email TEXT,
+    phone TEXT,
+    address TEXT,
+    number TEXT,
+    complement TEXT,
+    neighborhood TEXT,
+    city TEXT,
+    state TEXT,
+    zip_code TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ensure all columns exist on public.clients if table already existed previously
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid();
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS document TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS number TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS complement TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS zip_code TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- RLS for Clients
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own clients" ON public.clients;
+CREATE POLICY "Users manage their own clients"
+ON public.clients FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_clients_user_id ON public.clients(user_id);
+CREATE INDEX IF NOT EXISTS idx_clients_name ON public.clients(user_id, name);
+
+-- Receipts Table
+CREATE TABLE IF NOT EXISTS public.receipts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_code TEXT,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL,
+    client_name TEXT NOT NULL,
+    client_document TEXT,
+    client_email TEXT,
+    client_phone TEXT,
+    description TEXT NOT NULL,
+    amount NUMERIC(15, 2) NOT NULL,
+    issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    service_start_date DATE,
+    service_end_date DATE,
+    payment_method TEXT DEFAULT 'PIX',
+    status TEXT DEFAULT 'issued',
+    notes TEXT,
+    financial_movement_id UUID REFERENCES public.financial_movements(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ensure all columns exist on public.receipts if table already existed previously
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS receipt_code TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid();
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS client_name TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS client_document TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS client_email TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS client_phone TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS amount NUMERIC(12, 2);
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS issue_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS service_start_date DATE;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS service_end_date DATE;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'PIX';
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'issued';
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS financial_movement_id UUID;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- RLS for Receipts
+ALTER TABLE public.receipts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own receipts" ON public.receipts;
+CREATE POLICY "Users manage their own receipts"
+ON public.receipts FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_receipts_user_id ON public.receipts(user_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_client_id ON public.receipts(user_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_issue_date ON public.receipts(user_id, issue_date);
+
+-- 11. Recurring Charges & Occurrences Engine
+CREATE TABLE IF NOT EXISTS public.charges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL,
+    client_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount NUMERIC(15, 2) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    billing_day INTEGER NOT NULL CHECK (billing_day >= 1 AND billing_day <= 31),
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.charges ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own charges" ON public.charges;
+CREATE POLICY "Users manage their own charges"
+ON public.charges FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_charges_user_id ON public.charges(user_id);
+CREATE INDEX IF NOT EXISTS idx_charges_client ON public.charges(user_id, client_id);
+
+CREATE TABLE IF NOT EXISTS public.charge_occurrences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    charge_id UUID NOT NULL REFERENCES public.charges(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    reference_month TEXT NOT NULL, -- Format: YYYY-MM
+    due_date DATE NOT NULL,
+    amount NUMERIC(15, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'paid'
+    paid_at TIMESTAMPTZ,
+    financial_movement_id UUID REFERENCES public.financial_movements(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (charge_id, reference_month)
+);
+
+ALTER TABLE public.charge_occurrences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own charge occurrences" ON public.charge_occurrences;
+CREATE POLICY "Users manage their own charge occurrences"
+ON public.charge_occurrences FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_charge_occurrences_user ON public.charge_occurrences(user_id);
+CREATE INDEX IF NOT EXISTS idx_charge_occurrences_charge ON public.charge_occurrences(charge_id);
+CREATE INDEX IF NOT EXISTS idx_charge_occurrences_month ON public.charge_occurrences(user_id, reference_month);
+CREATE INDEX IF NOT EXISTS idx_charge_occurrences_due ON public.charge_occurrences(user_id, due_date);
+
+
+

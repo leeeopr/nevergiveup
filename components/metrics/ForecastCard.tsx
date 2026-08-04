@@ -4,18 +4,22 @@ import { Wallet } from 'lucide-react'
 
 interface ForecastCardProps {
   projection: number
+  onOpenProjection?: () => void
 }
 
-export function ForecastCard({ projection }: ForecastCardProps) {
+export function ForecastCard({ projection, onOpenProjection }: ForecastCardProps) {
   const isPositive = projection >= 0
 
   return (
     <MetricCard 
       delay={0.5} 
-      className="bg-wood-teak/10 border-silver-brushed/10"
+      className="bg-wood-teak/10 border-silver-brushed/10 group cursor-pointer hover:border-silver-brushed/30 transition-all"
     >
-      <div>
-        <p className="text-[10px] text-silver-brushed/30 font-black uppercase tracking-[0.2em] mb-4">Capital Disponível (Projetado)</p>
+      <div onClick={onOpenProjection}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-[10px] text-silver-brushed/30 font-black uppercase tracking-[0.2em]">Capital Disponível (Projetado)</p>
+          <span className="text-[9px] text-amber-400 font-black uppercase tracking-widest bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 group-hover:bg-amber-400/20 transition-all">Ver Curva Complete &rarr;</span>
+        </div>
         <div className={`text-4xl font-black tracking-tighter mb-6 flex items-baseline gap-2 ${isPositive ? 'text-silver-polished' : 'text-rose-400'}`}>
           <span className="text-xl text-silver-brushed/20 select-none">R$</span>
           <Counter value={projection} prefix="" />

@@ -26,16 +26,31 @@ const ACTION_OPTIONS: ActionOption[] = [
 
 export interface FloatingActionButtonProps {
   onRefresh: () => void
-  activeTab: 'metrics' | 'movements' | 'progression' | 'structural'
+  activeTab: 'metrics' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'
   onAddStructuralExpense?: () => void
   isInline?: boolean
+  externalOpenTrigger?: number
 }
 
-export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpense, isInline = false }: FloatingActionButtonProps) {
+export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpense, isInline = false, externalOpenTrigger = 0 }: FloatingActionButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<MovementType | null>(null)
   const [saving, setSaving] = useState(false)
   const { hasPermission, loading, isIdentityResolved, user } = useAuth()
+
+  const prevTriggerRef = React.useRef(externalOpenTrigger)
+
+  React.useEffect(() => {
+    if (externalOpenTrigger > 0 && externalOpenTrigger !== prevTriggerRef.current) {
+      prevTriggerRef.current = externalOpenTrigger
+      if (activeTab === 'structural') {
+        if (onAddStructuralExpense) onAddStructuralExpense()
+      } else {
+        const timer = setTimeout(() => setIsOpen(true), 0)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [externalOpenTrigger, activeTab, onAddStructuralExpense])
 
   const handleClose = () => {
     setIsOpen(false)
@@ -117,14 +132,14 @@ export function FloatingActionButton({ onRefresh, activeTab, onAddStructuralExpe
     return (
       <>
         <motion.button
-          whileHover={{ scale: 1.1, rotate: 90 }}
-          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
           onClick={handleFabClick}
           title={getTooltipText()}
-          className="w-10 h-10 sm:w-11 sm:h-11 rounded-[16px] bg-wood-teak border border-white/10 shadow-lg flex items-center justify-center text-white relative overflow-hidden group shrink-0 mx-1.5 self-center cursor-pointer"
+          className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-silver-brushed hover:bg-white text-velvet-deep font-black shadow-[0_0_25px_rgba(255,255,255,0.25)] flex items-center justify-center relative overflow-hidden group shrink-0 mx-1 sm:mx-2 cursor-pointer border-2 border-white/40 transition-all"
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-white/15 via-transparent to-black/30 pointer-events-none" />
-          <Plus size={20} className="group-hover:text-white transition-colors" strokeWidth={2.5} />
+          <div className="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-white/40 pointer-events-none" />
+          <Plus size={22} className="text-velvet-deep group-hover:scale-110 transition-transform" strokeWidth={3} />
         </motion.button>
 
         <DialogShell 

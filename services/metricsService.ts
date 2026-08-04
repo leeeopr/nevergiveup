@@ -11,7 +11,13 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 export const metricsService = {
-  calculateMonthlyMetrics(movements: FinancialMovement[], year: number, month: number, structuralCost?: number): MetricSummary {
+  calculateMonthlyMetrics(
+    movements: FinancialMovement[], 
+    year: number, 
+    month: number, 
+    structuralCost?: number,
+    personalBudget?: number
+  ): MetricSummary {
     const totals = {
       entrada: 0,
       saida_fixa: 0,
@@ -55,8 +61,25 @@ export const metricsService = {
 
     // New rules for Estimativa de Gasto Mensal & Orçamento Diário
     const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const estimativaMensal = structuralCost !== undefined && structuralCost > 0 ? structuralCost : 3000
-    const orcamentoDiario = estimativaMensal / daysInMonth
+    const finalPersonalBudget = personalBudget !== undefined && personalBudget > 0 ? personalBudget : 1200
+    const orcamentoDiario = finalPersonalBudget / daysInMonth
+
+    const personalBudgetUsed = totals.gasto_diario
+    const personalBudgetRemaining = finalPersonalBudget - personalBudgetUsed
+
+    const isFutureMonth = (today.getFullYear() < year) || (today.getFullYear() === year && today.getMonth() < month)
+    let daysRemaining = 0
+    if (isFutureMonth) {
+      daysRemaining = daysInMonth
+    } else if (isCurrentMonth) {
+      daysRemaining = Math.max(daysInMonth - today.getDate() + 1, 1)
+    } else {
+      daysRemaining = 0
+    }
+
+    const personalBudgetDailyRemaining = daysRemaining > 0 ? Math.max(0, personalBudgetRemaining) / daysRemaining : 0
+    const personalBudgetPercentUsed = finalPersonalBudget > 0 ? (personalBudgetUsed / finalPersonalBudget) * 100 : 0
+    const personalBudgetProjected = dailyAverageReal * daysInMonth
 
     return {
       performance,
@@ -76,10 +99,16 @@ export const metricsService = {
         { name: 'Diário', value: totals.gasto_diario, color: TYPE_COLORS.gasto_diario },
         { name: 'Cartão', value: totals.cartao, color: TYPE_COLORS.cartao },
         { name: 'Economia', value: totals.economia, color: TYPE_COLORS.economia },
-        { name: 'Cobranças', value: totals.cobranca_pendente, color: TYPE_COLORS.cobranca }
+        { name: 'Cobranças', value: totals.cobranca_pendente, color: TYPE_COLORS.cobranca }
       ].filter(d => d.value > 0),
-      estimativaMensal,
-      orcamentoDiario
+      estimativaMensal: finalPersonalBudget,
+      orcamentoDiario,
+      personalBudget: finalPersonalBudget,
+      personalBudgetUsed,
+      personalBudgetRemaining,
+      personalBudgetDailyRemaining,
+      personalBudgetPercentUsed,
+      personalBudgetProjected
     }
   }
 }

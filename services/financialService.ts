@@ -1,6 +1,7 @@
 import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
 import { FinancialMovement } from '@/types/financial'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
+import { googleCalendarService } from '@/services/googleCalendarService'
 
 const LOCAL_MOVEMENTS_KEY = 'financeira_movements'
 
@@ -194,6 +195,14 @@ export const financialService = {
       }
       all.push(newMovement)
       saveLocalMovements(all)
+
+      // Sync with Google Calendar asynchronously without blocking financial ops
+      this.getAllMovements().then(all => {
+        googleCalendarService.syncAllMovements('local-user-id', all, 12).catch(err => {
+          console.warn('Google Calendar sync background error:', err)
+        })
+      })
+
       return newMovement
     }
 
@@ -211,6 +220,15 @@ export const financialService = {
 
     if (error) {
       throw new Error(`Erro de persistência na nuvem (Supabase): Não foi possível incluir a movimentação. Detalhes: ${error.message}`)
+    }
+
+    // Sync with Google Calendar asynchronously without blocking financial ops
+    if (data) {
+      this.getAllMovements().then(all => {
+        googleCalendarService.syncAllMovements(userId, all, 12).catch(err => {
+          console.warn('Google Calendar sync background error:', err)
+        })
+      })
     }
     
     return data
@@ -230,6 +248,13 @@ export const financialService = {
       }
       all[idx] = updated
       saveLocalMovements(all)
+
+      this.getAllMovements().then(all => {
+        googleCalendarService.syncAllMovements('local-user-id', all, 12).catch(err => {
+          console.warn('Google Calendar sync background error:', err)
+        })
+      })
+
       return updated
     }
 
@@ -247,6 +272,14 @@ export const financialService = {
       throw new Error(`Erro de persistência na nuvem ao tentar salvar alterações: ${error.message}`)
     }
 
+    if (data) {
+      this.getAllMovements().then(all => {
+        googleCalendarService.syncAllMovements(userId, all, 12).catch(err => {
+          console.warn('Google Calendar sync background error:', err)
+        })
+      })
+    }
+
     return data
   },
 
@@ -255,11 +288,22 @@ export const financialService = {
       const all = getLocalMovements()
       const filtered = all.filter(m => m.id !== id)
       saveLocalMovements(filtered)
+
+      googleCalendarService.deleteMovementFromCalendar('local-user-id', id).catch(err => {
+        console.warn('Google Calendar delete background error:', err)
+      })
+
       return
     }
 
     const supabase = getSupabase()
     const userId = await getUserId()
+
+    // Delete Google Calendar event mapping before/alongside DB deletion
+    googleCalendarService.deleteMovementFromCalendar(userId, id).catch(err => {
+      console.warn('Google Calendar delete background error:', err)
+    })
+
     const { error } = await supabase
       .from('financial_movements')
       .delete()
