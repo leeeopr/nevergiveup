@@ -1,11 +1,13 @@
 'use client'
 
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
 import { DialogShell } from '@/components/ui/DialogShell'
 import { Receipt } from '@/types/company'
 import { useAuth } from '@/context/AuthContext'
 import { numberToWordsBRL, formatDateInWords, formatDateNumeric } from '@/utils/numberToWords'
-import { Printer, Copy, Check, ShieldCheck, Building } from 'lucide-react'
+import { Printer, Copy, Check, ShieldCheck, Download, Loader2 } from 'lucide-react'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 
 interface ReceiptPrintModalProps {
   isOpen: boolean
@@ -15,7 +17,9 @@ interface ReceiptPrintModalProps {
 
 export function ReceiptPrintModal({ isOpen, onClose, receipt }: ReceiptPrintModalProps) {
   const { profile } = useAuth()
-  const [copied, setCopied] = React.useState(false)
+  const [copied, setCopied] = useState(false)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const receiptCardRef = useRef<HTMLDivElement>(null)
 
   if (!receipt) return null
 
@@ -54,8 +58,64 @@ export function ReceiptPrintModal({ isOpen, onClose, receipt }: ReceiptPrintModa
 
   const dateInWords = formatDateInWords(receipt.issue_date)
 
-  const handlePrint = () => {
-    window.print()
+  const handleDownloadPdf = async () => {
+    if (!receiptCardRef.current) return
+    setIsGeneratingPdf(true)
+
+    try {
+      // Ensure all images (signature/logo) inside the card are loaded
+      const images = receiptCardRef.current.querySelectorAll('img')
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete) return Promise.resolve()
+          return new Promise((resolve) => {
+            img.onload = resolve
+            img.onerror = resolve
+          })
+        })
+      )
+
+      // Capture exact DOM element visually as canvas
+      const canvas = await html2canvas(receiptCardRef.current, {
+        scale: 2, // High resolution (300 DPI equivalent)
+        useCORS: true, // Allow cross-origin signature images
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        windowWidth: 1200
+      })
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98)
+      
+      // Create A4 PDF in portrait orientation
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      const pdfWidth = pdf.internal.pageSize.getWidth() // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight() // 297mm
+
+      // Calculate width & height maintaining aspect ratio
+      const imgWidth = pdfWidth - 20 // 10mm margins on sides
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      // Center vertically if it fits on 1 page
+      const yPosition = imgHeight < pdfHeight ? 10 : 0
+
+      pdf.addImage(imgData, 'JPEG', 10, yPosition, imgWidth, imgHeight)
+
+      const codeStr = receipt.receipt_code || receipt.id.slice(0, 8).toUpperCase()
+      const sanitizedClient = clientName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20)
+      pdf.save(`Recibo_${codeStr}_${sanitizedClient}.pdf`)
+    } catch (err) {
+      console.error('[ReceiptPrintModal] Error generating PDF:', err)
+      // Fallback to browser print if canvas generation fails
+      window.print()
+    } finally {
+      setIsGeneratingPdf(false)
+    }
   }
 
   const handleCopyText = () => {
@@ -119,11 +179,21 @@ ${providerName}
             </button>
 
             <button
-              onClick={handlePrint}
-              className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-lg flex items-center gap-1.5"
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-zinc-950 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-lg flex items-center gap-1.5"
             >
-              <Printer size={12} />
-              <span>Imprimir / PDF</span>
+              {isGeneratingPdf ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" />
+                  <span>Gerando PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={12} />
+                  <span>Baixar / Imprimir PDF</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -131,7 +201,7 @@ ${providerName}
     >
       {/* Printable Document Sheet Container */}
       <div className="py-4">
-        {/* Print Styles for clean physical printing */}
+        {/* Print Styles for native browser print fallback */}
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
             body * {
@@ -141,25 +211,24 @@ ${providerName}
               visibility: visible !important;
             }
             #printable-receipt {
-              position: absolute !important;
+              position: fixed !important;
               left: 0 !important;
               top: 0 !important;
               width: 100% !important;
               color: #000 !important;
               background: #fff !important;
               padding: 40px !important;
-              font-family: serif, sans-serif !important;
+              font-family: sans-serif !important;
               box-shadow: none !important;
               border: none !important;
-            }
-            .no-print {
-              display: none !important;
+              border-radius: 0 !important;
             }
           }
         `}} />
 
         <div
           id="printable-receipt"
+          ref={receiptCardRef}
           className="bg-white text-zinc-900 border border-zinc-200 rounded-2xl p-8 sm:p-12 space-y-8 shadow-2xl relative font-sans"
         >
           {/* Header Title */}
@@ -218,6 +287,7 @@ ${providerName}
                 <img
                   src={signatureUrl}
                   alt={`Assinatura de ${providerName}`}
+                  crossOrigin="anonymous"
                   className="h-24 max-w-[280px] object-contain mx-auto"
                 />
               </div>
@@ -235,3 +305,4 @@ ${providerName}
     </DialogShell>
   )
 }
+
