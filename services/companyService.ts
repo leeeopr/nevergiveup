@@ -363,6 +363,10 @@ export const companyService = {
       if (newReceipt.service_start_date) insertPayload.service_start_date = newReceipt.service_start_date
       if (newReceipt.service_end_date) insertPayload.service_end_date = newReceipt.service_end_date
       if (newReceipt.notes) insertPayload.notes = newReceipt.notes
+      if (newReceipt.reference_month) insertPayload.reference_month = newReceipt.reference_month
+      if (newReceipt.receipt_sent !== undefined) insertPayload.receipt_sent = newReceipt.receipt_sent
+      if (newReceipt.receipt_sent_at) insertPayload.receipt_sent_at = newReceipt.receipt_sent_at
+      if (newReceipt.receipt_sent_by) insertPayload.receipt_sent_by = newReceipt.receipt_sent_by
 
       // Add optional UUID relations only if valid UUIDs
       if (newReceipt.client_id && isValidUuid(newReceipt.client_id)) {
@@ -370,6 +374,12 @@ export const companyService = {
       }
       if (newReceipt.financial_movement_id && isValidUuid(newReceipt.financial_movement_id)) {
         insertPayload.financial_movement_id = newReceipt.financial_movement_id
+      }
+      if (newReceipt.charge_id && isValidUuid(newReceipt.charge_id)) {
+        insertPayload.charge_id = newReceipt.charge_id
+      }
+      if (newReceipt.charge_occurrence_id && isValidUuid(newReceipt.charge_occurrence_id)) {
+        insertPayload.charge_occurrence_id = newReceipt.charge_occurrence_id
       }
       if (receiptUuid && isValidUuid(receiptUuid)) {
         insertPayload.id = receiptUuid

@@ -9,7 +9,13 @@ export interface ChargeOccurrence {
   amount: number
   status: OccurrenceStatus
   paid_at?: string | null
+  payment_date?: string | null
   financial_movement_id?: string | null
+  receipt_id?: string | null
+  receipt_sent?: boolean
+  receipt_sent_at?: string | null
+  receipt_sent_by?: string | null
+  payment_method?: string | null
   created_at?: string
   updated_at?: string
   

@@ -533,11 +533,31 @@ CREATE TABLE IF NOT EXISTS public.charge_occurrences (
     amount NUMERIC(15, 2) NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'paid'
     paid_at TIMESTAMPTZ,
+    payment_date DATE,
     financial_movement_id UUID REFERENCES public.financial_movements(id) ON DELETE SET NULL,
+    receipt_id UUID,
+    receipt_sent BOOLEAN DEFAULT FALSE,
+    receipt_sent_at TIMESTAMPTZ,
+    receipt_sent_by TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (charge_id, reference_month)
 );
+
+-- Ensure extended columns exist on charge_occurrences
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS payment_date DATE;
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_id UUID;
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMPTZ;
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_sent_by TEXT;
+
+-- Ensure extended columns exist on receipts
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS charge_id UUID REFERENCES public.charges(id) ON DELETE SET NULL;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS charge_occurrence_id UUID;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS reference_month TEXT;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS receipt_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMPTZ;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS receipt_sent_by TEXT;
 
 ALTER TABLE public.charge_occurrences ENABLE ROW LEVEL SECURITY;
 

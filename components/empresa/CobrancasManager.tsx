@@ -45,7 +45,9 @@ export function CobrancasManager({ userId }: CobrancasManagerProps) {
   }, [])
 
   useEffect(() => {
-    loadData()
+    Promise.resolve().then(() => {
+      loadData()
+    })
   }, [loadData])
 
   const handleAddCharge = () => {

@@ -47,6 +47,12 @@ export interface Receipt {
   status: ReceiptStatus
   notes?: string | null
   financial_movement_id?: string | null
+  charge_id?: string | null
+  charge_occurrence_id?: string | null
+  reference_month?: string | null
+  receipt_sent?: boolean
+  receipt_sent_at?: string | null
+  receipt_sent_by?: string | null
   created_at?: string
   updated_at?: string
 }

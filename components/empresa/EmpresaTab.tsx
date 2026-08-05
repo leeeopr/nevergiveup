@@ -265,6 +265,7 @@ export function EmpresaTab() {
           onDeleteReceipt={handleDeleteReceipt}
           onPrintReceipt={handlePrintReceipt}
           onToggleStatus={handleToggleReceiptStatus}
+          onRefresh={loadData}
         />
       ) : (
         <CompanySettingsCard />

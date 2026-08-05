@@ -52,51 +52,53 @@ export function ChargeFormModal({
   useEffect(() => {
     if (!isOpen) return
 
-    if (chargeToEdit) {
-      setSelectedClientId(chargeToEdit.client_id || '')
-      setClientName(chargeToEdit.client_name || '')
-      setDescription(chargeToEdit.description || '')
-      setAmount(chargeToEdit.amount || '')
-      setStartDate(chargeToEdit.start_date || '')
-      setEndDate(chargeToEdit.end_date || '')
-      setBillingDay(chargeToEdit.billing_day || 10)
-      setNotes(chargeToEdit.notes || '')
-    } else if (preselectedClient) {
-      setSelectedClientId(preselectedClient.id)
-      setClientName(preselectedClient.name)
-      setDescription('Mensalidade / Servico')
-      setAmount('')
-      
-      const now = new Date()
-      const startStr = now.toISOString().split('T')[0]
-      // Default end date 6 months from now
-      const future = new Date(now)
-      future.setMonth(future.getMonth() + 5)
-      const endStr = future.toISOString().split('T')[0]
+    Promise.resolve().then(() => {
+      if (chargeToEdit) {
+        setSelectedClientId(chargeToEdit.client_id || '')
+        setClientName(chargeToEdit.client_name || '')
+        setDescription(chargeToEdit.description || '')
+        setAmount(chargeToEdit.amount || '')
+        setStartDate(chargeToEdit.start_date || '')
+        setEndDate(chargeToEdit.end_date || '')
+        setBillingDay(chargeToEdit.billing_day || 10)
+        setNotes(chargeToEdit.notes || '')
+      } else if (preselectedClient) {
+        setSelectedClientId(preselectedClient.id)
+        setClientName(preselectedClient.name)
+        setDescription('Mensalidade / Servico')
+        setAmount('')
+        
+        const now = new Date()
+        const startStr = now.toISOString().split('T')[0]
+        // Default end date 6 months from now
+        const future = new Date(now)
+        future.setMonth(future.getMonth() + 5)
+        const endStr = future.toISOString().split('T')[0]
 
-      setStartDate(startStr)
-      setEndDate(endStr)
-      setBillingDay(now.getDate())
-      setNotes('')
-    } else {
-      setSelectedClientId('')
-      setClientName('')
-      setDescription('')
-      setAmount('')
+        setStartDate(startStr)
+        setEndDate(endStr)
+        setBillingDay(now.getDate())
+        setNotes('')
+      } else {
+        setSelectedClientId('')
+        setClientName('')
+        setDescription('')
+        setAmount('')
 
-      const now = new Date()
-      const startStr = now.toISOString().split('T')[0]
-      const future = new Date(now)
-      future.setMonth(future.getMonth() + 5)
-      const endStr = future.toISOString().split('T')[0]
+        const now = new Date()
+        const startStr = now.toISOString().split('T')[0]
+        const future = new Date(now)
+        future.setMonth(future.getMonth() + 5)
+        const endStr = future.toISOString().split('T')[0]
 
-      setStartDate(startStr)
-      setEndDate(endStr)
-      setBillingDay(10)
-      setNotes('')
-    }
+        setStartDate(startStr)
+        setEndDate(endStr)
+        setBillingDay(10)
+        setNotes('')
+      }
 
-    setErrorMsg('')
+      setErrorMsg('')
+    })
   }, [isOpen, chargeToEdit, preselectedClient])
 
   // Handle client select change

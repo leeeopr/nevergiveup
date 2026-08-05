@@ -1,6 +1,7 @@
 import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
 import { Charge, ChargeOccurrence, OccurrenceStatus, ChargeSummaryMetrics } from '@/types/cobranca'
 import { generateExpectedOccurrences, calculateChargeStats } from '@/utils/chargeUtils'
+import { companyService } from '@/services/companyService'
 
 const LOCAL_CHARGES_KEY = 'financeira_charges'
 const LOCAL_OCCURRENCES_KEY = 'financeira_charge_occurrences'
@@ -598,7 +599,16 @@ export const cobrancasService = {
    */
   async updateOccurrenceStatus(occurrenceId: string, newStatus: OccurrenceStatus): Promise<ChargeOccurrence> {
     if (isLocalFallbackActive()) {
-      return updateLocalOccurrenceStatus(occurrenceId, newStatus)
+      const updated = updateLocalOccurrenceStatus(occurrenceId, newStatus)
+      if (newStatus === 'paid') {
+        try {
+          const today = new Date().toISOString().split('T')[0]
+          await this.getOrCreateReceiptForOccurrence(occurrenceId, today, 'PIX')
+        } catch (rErr) {
+          console.warn('Auto receipt creation in local mode failed:', rErr)
+        }
+      }
+      return updated
     }
 
     try {
@@ -607,17 +617,27 @@ export const cobrancasService = {
 
       const { data: occ, error: fetchErr } = await supabase
         .from('charge_occurrences')
-        .select('*, charges(description, client_name)')
+        .select('*, charges(description, client_name, client_id, notes)')
         .eq('id', occurrenceId)
         .eq('user_id', userId)
         .single()
 
       if (fetchErr || !occ) {
         console.warn('Supabase occurrence fetch failed, using local update:', fetchErr?.message)
-        return updateLocalOccurrenceStatus(occurrenceId, newStatus)
+        const updated = updateLocalOccurrenceStatus(occurrenceId, newStatus)
+        if (newStatus === 'paid') {
+          try {
+            const today = new Date().toISOString().split('T')[0]
+            await this.getOrCreateReceiptForOccurrence(occurrenceId, today, 'PIX')
+          } catch (rErr) {
+            console.warn('Auto receipt creation in local fallback failed:', rErr)
+          }
+        }
+        return updated
       }
 
       const now = new Date().toISOString()
+      const todayDate = now.split('T')[0]
       const clientName = occ.charges?.client_name || 'Cliente'
       const chargeDesc = occ.charges?.description || 'Cobrança'
 
@@ -677,11 +697,14 @@ export const cobrancasService = {
         }
       }
 
+      const paymentDateToSave = newStatus === 'paid' ? (occ.payment_date || todayDate) : null
+
       const { data: updated, error: updateErr } = await supabase
         .from('charge_occurrences')
         .update({
           status: newStatus,
           paid_at: newStatus === 'paid' ? now : null,
+          payment_date: paymentDateToSave,
           financial_movement_id: movementId,
           updated_at: now
         })
@@ -691,7 +714,23 @@ export const cobrancasService = {
 
       if (updateErr || !updated) {
         console.warn('Supabase update occurrence status failed, using local update:', updateErr?.message)
-        return updateLocalOccurrenceStatus(occurrenceId, newStatus)
+        const updatedLocal = updateLocalOccurrenceStatus(occurrenceId, newStatus)
+        if (newStatus === 'paid') {
+          try {
+            await this.getOrCreateReceiptForOccurrence(occurrenceId, todayDate, 'PIX')
+          } catch (rErr) {
+            console.warn('Auto receipt creation in local fallback failed:', rErr)
+          }
+        }
+        return updatedLocal
+      }
+
+      if (newStatus === 'paid') {
+        try {
+          await this.getOrCreateReceiptForOccurrence(occurrenceId, paymentDateToSave || todayDate, occ.payment_method || 'PIX')
+        } catch (rErr) {
+          console.warn('Auto receipt creation failed during status toggle:', rErr)
+        }
       }
 
       return {
@@ -701,7 +740,349 @@ export const cobrancasService = {
       }
     } catch (err) {
       console.warn('Supabase updateOccurrenceStatus failed, using local fallback:', err)
-      return updateLocalOccurrenceStatus(occurrenceId, newStatus)
+      const updatedLocal = updateLocalOccurrenceStatus(occurrenceId, newStatus)
+      if (newStatus === 'paid') {
+        try {
+          const today = new Date().toISOString().split('T')[0]
+          await this.getOrCreateReceiptForOccurrence(occurrenceId, today, 'PIX')
+        } catch (rErr) {
+          console.warn('Auto receipt creation in local fallback failed:', rErr)
+        }
+      }
+      return updatedLocal
+    }
+  },
+
+  /**
+   * Confirms payment of an occurrence specifying payment date and payment method.
+   * Automatically creates or links the receipt with issue_date = paymentDate.
+   */
+  async confirmPaymentWithDetails(
+    occurrenceId: string, 
+    paymentDate: string, 
+    paymentMethod: string = 'PIX'
+  ): Promise<{ occurrence: ChargeOccurrence; receipt: any }> {
+    const now = new Date().toISOString()
+
+    if (isLocalFallbackActive()) {
+      const occurrences = getLocalOccurrences()
+      const idx = occurrences.findIndex(o => o.id === occurrenceId)
+      if (idx === -1) throw new Error('Parcela não encontrada.')
+
+      const occ = occurrences[idx]
+      occ.status = 'paid'
+      occ.paid_at = now
+      occ.payment_date = paymentDate
+      occ.payment_method = paymentMethod
+      occ.updated_at = now
+      occurrences[idx] = occ
+      saveLocalOccurrences(occurrences)
+
+      const receipt = await this.getOrCreateReceiptForOccurrence(occurrenceId, paymentDate, paymentMethod)
+      occ.receipt_id = receipt.id
+      occurrences[idx] = occ
+      saveLocalOccurrences(occurrences)
+
+      return { occurrence: occ, receipt }
+    }
+
+    try {
+      const supabase = getSupabase()
+      const userId = await getUserId()
+
+      // 1. Update occurrence status and payment_date
+      const { data: updatedOcc, error: updateErr } = await supabase
+        .from('charge_occurrences')
+        .update({
+          status: 'paid',
+          paid_at: now,
+          payment_date: paymentDate,
+          payment_method: paymentMethod,
+          updated_at: now
+        })
+        .eq('id', occurrenceId)
+        .eq('user_id', userId)
+        .select()
+        .single()
+
+      if (updateErr || !updatedOcc) {
+        console.warn('Failed to update occurrence in Supabase, using local fallback:', updateErr?.message)
+        const occurrences = getLocalOccurrences()
+        const idx = occurrences.findIndex(o => o.id === occurrenceId)
+        if (idx !== -1) {
+          const occ = occurrences[idx]
+          occ.status = 'paid'
+          occ.paid_at = now
+          occ.payment_date = paymentDate
+          occ.payment_method = paymentMethod
+          occ.updated_at = now
+          saveLocalOccurrences(occurrences)
+          const receipt = await this.getOrCreateReceiptForOccurrence(occurrenceId, paymentDate, paymentMethod)
+          occ.receipt_id = receipt.id
+          saveLocalOccurrences(occurrences)
+          return { occurrence: occ, receipt }
+        }
+        throw new Error('Erro ao confirmar pagamento.')
+      }
+
+      // 2. Automatically generate or retrieve receipt with issue_date = paymentDate
+      const receipt = await this.getOrCreateReceiptForOccurrence(occurrenceId, paymentDate, paymentMethod)
+
+      // 3. Link receipt_id back to occurrence if not set
+      if (receipt?.id && updatedOcc.receipt_id !== receipt.id) {
+        await supabase
+          .from('charge_occurrences')
+          .update({ receipt_id: receipt.id })
+          .eq('id', occurrenceId)
+        updatedOcc.receipt_id = receipt.id
+      }
+
+      return { occurrence: updatedOcc, receipt }
+    } catch (err) {
+      console.error('Exception confirming payment with details:', err)
+      throw err
+    }
+  },
+
+  /**
+   * Generates or retrieves an existing receipt for a recurring charge occurrence.
+   * Guarantees IDEMPOTENCY: Does NOT duplicate receipts for the same occurrence.
+   * Issue date of the receipt = Payment date of the occurrence!
+   */
+  async getOrCreateReceiptForOccurrence(
+    occurrenceId: string, 
+    paymentDate?: string, 
+    paymentMethod: string = 'PIX'
+  ): Promise<any> {
+    const isLocal = isLocalFallbackActive()
+
+    // Retrieve occurrence and charge
+    let occ: ChargeOccurrence | null = null
+    let charge: Charge | null = null
+    let clientObj: any = null
+    let activeUserId = 'local-user-id'
+
+    if (!isLocal) {
+      try {
+        const supabase = getSupabase()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) activeUserId = session.user.id
+
+        const { data: dbOcc } = await supabase
+          .from('charge_occurrences')
+          .select('*')
+          .eq('id', occurrenceId)
+          .maybeSingle()
+
+        if (dbOcc) {
+          occ = dbOcc as ChargeOccurrence
+          const { data: dbCharge } = await supabase
+            .from('charges')
+            .select('*')
+            .eq('id', dbOcc.charge_id)
+            .maybeSingle()
+          if (dbCharge) charge = dbCharge as Charge
+
+          if (charge?.client_id) {
+            const { data: dbClient } = await supabase
+              .from('clients')
+              .select('*')
+              .eq('id', charge.client_id)
+              .maybeSingle()
+            if (dbClient) clientObj = dbClient
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch occurrence from Supabase:', err)
+      }
+    }
+
+    if (!occ) {
+      const localOccs = getLocalOccurrences()
+      occ = localOccs.find(o => o.id === occurrenceId) || null
+    }
+
+    if (!charge && occ) {
+      const localCharges = getLocalCharges()
+      charge = localCharges.find(c => c.id === occ!.charge_id) || null
+    }
+
+    if (!occ || !charge) {
+      throw new Error('Cobrança ou parcela não encontrada para emitir recibo.')
+    }
+
+    const effectivePaymentDate = paymentDate || occ.payment_date || (occ.paid_at ? occ.paid_at.split('T')[0] : new Date().toISOString().split('T')[0])
+
+    // Check if receipt ALREADY exists for this occurrence (Idempotency)
+    const existingReceipts = await companyService.getReceipts(activeUserId)
+    const existingReceipt = existingReceipts.find(
+      r => r.charge_occurrence_id === occurrenceId || (r.charge_id === charge!.id && r.reference_month === occ!.reference_month)
+    )
+
+    if (existingReceipt) {
+      // If issue_date or payment_method changed, update it
+      let needsUpdate = false
+      const updates: any = {}
+      if (existingReceipt.issue_date !== effectivePaymentDate) {
+        updates.issue_date = effectivePaymentDate
+        needsUpdate = true
+      }
+      if (paymentMethod && existingReceipt.payment_method !== paymentMethod) {
+        updates.payment_method = paymentMethod
+        needsUpdate = true
+      }
+      if (needsUpdate) {
+        const updatedR = await companyService.updateReceipt(activeUserId, existingReceipt.id, updates)
+        return updatedR
+      }
+      return existingReceipt
+    }
+
+    // Calculate service period from reference_month (e.g. 2026-08 => 2026-08-01 to 2026-08-31)
+    const [yearNum, monthNum] = occ.reference_month.split('-').map(Number)
+    const startDayStr = `${occ.reference_month}-01`
+    const lastDayNum = new Date(Date.UTC(yearNum, monthNum, 0)).getUTCDate()
+    const lastDayStr = (lastDayNum < 10 ? '0' : '') + lastDayNum
+    const endDayStr = `${occ.reference_month}-${lastDayStr}`
+
+    // Create new automatic receipt
+    const receiptPayload = {
+      client_id: charge.client_id || null,
+      client_name: charge.client_name,
+      client_document: clientObj?.document || null,
+      client_email: clientObj?.email || null,
+      client_phone: clientObj?.phone || null,
+      description: charge.description,
+      amount: Number(occ.amount),
+      issue_date: effectivePaymentDate, // ISSUE DATE = PAYMENT DATE
+      service_start_date: startDayStr,
+      service_end_date: endDayStr,
+      payment_method: paymentMethod || occ.payment_method || 'PIX',
+      status: 'issued' as const,
+      notes: charge.notes ? `Mensalidade ref. ${occ.reference_month}. ${charge.notes}` : `Mensalidade ref. ${occ.reference_month}.`,
+      charge_id: charge.id,
+      charge_occurrence_id: occ.id,
+      reference_month: occ.reference_month,
+      receipt_sent: occ.receipt_sent || false,
+      receipt_sent_at: occ.receipt_sent_at || null,
+      receipt_sent_by: occ.receipt_sent_by || null
+    }
+
+    const createdReceipt = await companyService.createReceipt(activeUserId, receiptPayload)
+
+    // Link receipt_id back to occurrence
+    if (createdReceipt?.id) {
+      if (isLocal) {
+        const localOccs = getLocalOccurrences()
+        const oIdx = localOccs.findIndex(o => o.id === occurrenceId)
+        if (oIdx !== -1) {
+          localOccs[oIdx].receipt_id = createdReceipt.id
+          localOccs[oIdx].payment_date = effectivePaymentDate
+          saveLocalOccurrences(localOccs)
+        }
+      } else {
+        try {
+          const supabase = getSupabase()
+          await supabase
+            .from('charge_occurrences')
+            .update({ receipt_id: createdReceipt.id, payment_date: effectivePaymentDate })
+            .eq('id', occurrenceId)
+        } catch (linkErr) {
+          console.warn('Failed linking receipt_id in Supabase:', linkErr)
+        }
+      }
+    }
+
+    return createdReceipt
+  },
+
+  /**
+   * Toggles the sent status (receipt_sent) of an occurrence and updates its linked receipt.
+   * Tracks receipt_sent, receipt_sent_at, and receipt_sent_by.
+   */
+  async toggleOccurrenceReceiptSent(
+    occurrenceId: string, 
+    sentStatus: boolean, 
+    userIdentifier: string = 'Usuário'
+  ): Promise<ChargeOccurrence> {
+    const now = new Date().toISOString()
+    const sentAt = sentStatus ? now : null
+    const sentBy = sentStatus ? userIdentifier : null
+
+    if (isLocalFallbackActive()) {
+      const occurrences = getLocalOccurrences()
+      const idx = occurrences.findIndex(o => o.id === occurrenceId)
+      if (idx === -1) throw new Error('Parcela não encontrada.')
+
+      const occ = occurrences[idx]
+      occ.receipt_sent = sentStatus
+      occ.receipt_sent_at = sentAt
+      occ.receipt_sent_by = sentBy
+      occ.updated_at = now
+      occurrences[idx] = occ
+      saveLocalOccurrences(occurrences)
+
+      // Also update linked receipt in local storage
+      if (occ.receipt_id) {
+        companyService.updateReceipt('local-user-id', occ.receipt_id, {
+          receipt_sent: sentStatus,
+          receipt_sent_at: sentAt,
+          receipt_sent_by: sentBy
+        }).catch(() => {})
+      }
+
+      return occ
+    }
+
+    try {
+      const supabase = getSupabase()
+      const userId = await getUserId()
+
+      const { data: updatedOcc, error } = await supabase
+        .from('charge_occurrences')
+        .update({
+          receipt_sent: sentStatus,
+          receipt_sent_at: sentAt,
+          receipt_sent_by: sentBy,
+          updated_at: now
+        })
+        .eq('id', occurrenceId)
+        .eq('user_id', userId)
+        .select('*, charges(description, client_name)')
+        .single()
+
+      if (error || !updatedOcc) {
+        console.warn('Failed updating sent status in Supabase, using local fallback:', error?.message)
+        const occurrences = getLocalOccurrences()
+        const idx = occurrences.findIndex(o => o.id === occurrenceId)
+        if (idx !== -1) {
+          const occ = occurrences[idx]
+          occ.receipt_sent = sentStatus
+          occ.receipt_sent_at = sentAt
+          occ.receipt_sent_by = sentBy
+          saveLocalOccurrences(occurrences)
+          return occ
+        }
+        throw new Error('Erro ao atualizar status de envio.')
+      }
+
+      // Also update linked receipt if present
+      if (updatedOcc.receipt_id) {
+        companyService.updateReceipt(userId, updatedOcc.receipt_id, {
+          receipt_sent: sentStatus,
+          receipt_sent_at: sentAt,
+          receipt_sent_by: sentBy
+        }).catch(err => console.warn('Could not sync receipt sent status:', err))
+      }
+
+      return {
+        ...updatedOcc,
+        client_name: updatedOcc.charges?.client_name || 'Cliente',
+        charge_description: updatedOcc.charges?.description || 'Cobrança'
+      }
+    } catch (err) {
+      console.error('Exception toggling receipt sent status:', err)
+      throw err
     }
   },
 
