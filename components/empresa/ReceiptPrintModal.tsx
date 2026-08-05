@@ -6,7 +6,7 @@ import { Receipt } from '@/types/company'
 import { useAuth } from '@/context/AuthContext'
 import { numberToWordsBRL, formatDateInWords, formatDateNumeric } from '@/utils/numberToWords'
 import { Printer, Copy, Check, ShieldCheck, Download, Loader2 } from 'lucide-react'
-import html2canvas from 'html2canvas'
+import { toPng } from 'html-to-image'
 import jsPDF from 'jspdf'
 
 interface ReceiptPrintModalProps {
@@ -75,17 +75,21 @@ export function ReceiptPrintModal({ isOpen, onClose, receipt }: ReceiptPrintModa
         })
       )
 
-      // Capture exact DOM element visually as canvas
-      const canvas = await html2canvas(receiptCardRef.current, {
-        scale: 2, // High resolution (300 DPI equivalent)
-        useCORS: true, // Allow cross-origin signature images
-        allowTaint: true,
+      // Capture exact DOM element visually as PNG using browser native foreignObject SVG rendering
+      const imgData = await toPng(receiptCardRef.current, {
+        cacheBust: true,
+        pixelRatio: 2, // High resolution (300 DPI equivalent)
         backgroundColor: '#ffffff',
-        logging: false,
-        windowWidth: 1200
+        style: {
+          margin: '0',
+          boxShadow: 'none',
+          borderRadius: '0'
+        }
       })
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.98)
+      // Get exact element dimensions for ratio
+      const elementWidth = receiptCardRef.current.offsetWidth
+      const elementHeight = receiptCardRef.current.offsetHeight
       
       // Create A4 PDF in portrait orientation
       const pdf = new jsPDF({
@@ -99,19 +103,19 @@ export function ReceiptPrintModal({ isOpen, onClose, receipt }: ReceiptPrintModa
 
       // Calculate width & height maintaining aspect ratio
       const imgWidth = pdfWidth - 20 // 10mm margins on sides
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      const imgHeight = (elementHeight * imgWidth) / elementWidth
 
       // Center vertically if it fits on 1 page
       const yPosition = imgHeight < pdfHeight ? 10 : 0
 
-      pdf.addImage(imgData, 'JPEG', 10, yPosition, imgWidth, imgHeight)
+      pdf.addImage(imgData, 'PNG', 10, yPosition, imgWidth, imgHeight)
 
       const codeStr = receipt.receipt_code || receipt.id.slice(0, 8).toUpperCase()
       const sanitizedClient = clientName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20)
       pdf.save(`Recibo_${codeStr}_${sanitizedClient}.pdf`)
     } catch (err) {
       console.error('[ReceiptPrintModal] Error generating PDF:', err)
-      // Fallback to browser print if canvas generation fails
+      // Fallback to browser print if image generation fails
       window.print()
     } finally {
       setIsGeneratingPdf(false)
