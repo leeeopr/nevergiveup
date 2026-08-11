@@ -101,14 +101,25 @@ export function ReceiptPrintModal({ isOpen, onClose, receipt }: ReceiptPrintModa
       const pdfWidth = pdf.internal.pageSize.getWidth() // 210mm
       const pdfHeight = pdf.internal.pageSize.getHeight() // 297mm
 
-      // Calculate width & height maintaining aspect ratio
-      const imgWidth = pdfWidth - 20 // 10mm margins on sides
-      const imgHeight = (elementHeight * imgWidth) / elementWidth
+      // Standard printable bounds with 12mm margins
+      const marginX = 12
+      const marginY = 12
+      const maxPdfWidth = pdfWidth - (marginX * 2) // 186mm
+      const maxPdfHeight = pdfHeight - (marginY * 2) // 273mm
 
-      // Center vertically if it fits on 1 page
-      const yPosition = imgHeight < pdfHeight ? 10 : 0
+      // Scale proportionally to fit inside printable bounds (both width & height)
+      const scaleX = maxPdfWidth / elementWidth
+      const scaleY = maxPdfHeight / elementHeight
+      const scale = Math.min(scaleX, scaleY)
 
-      pdf.addImage(imgData, 'PNG', 10, yPosition, imgWidth, imgHeight)
+      const finalImgWidth = elementWidth * scale
+      const finalImgHeight = elementHeight * scale
+
+      // Center horizontally and vertically on the page
+      const xPosition = (pdfWidth - finalImgWidth) / 2
+      const yPosition = (pdfHeight - finalImgHeight) / 2
+
+      pdf.addImage(imgData, 'PNG', xPosition, yPosition, finalImgWidth, finalImgHeight)
 
       const codeStr = receipt.receipt_code || receipt.id.slice(0, 8).toUpperCase()
       const sanitizedClient = clientName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20)
@@ -208,6 +219,15 @@ ${providerName}
         {/* Print Styles for native browser print fallback */}
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
+            @page {
+              size: A4 portrait;
+              margin: 10mm;
+            }
+            body {
+              background: #ffffff !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
             body * {
               visibility: hidden !important;
             }
@@ -215,17 +235,19 @@ ${providerName}
               visibility: visible !important;
             }
             #printable-receipt {
-              position: fixed !important;
+              position: absolute !important;
               left: 0 !important;
               top: 0 !important;
               width: 100% !important;
+              max-width: 100% !important;
               color: #000 !important;
               background: #fff !important;
-              padding: 40px !important;
+              padding: 24px !important;
               font-family: sans-serif !important;
               box-shadow: none !important;
               border: none !important;
               border-radius: 0 !important;
+              margin: 0 auto !important;
             }
           }
         `}} />
@@ -233,43 +255,43 @@ ${providerName}
         <div
           id="printable-receipt"
           ref={receiptCardRef}
-          className="bg-white text-zinc-900 border border-zinc-200 rounded-2xl p-8 sm:p-12 space-y-8 shadow-2xl relative font-sans"
+          className="bg-white text-zinc-900 border border-zinc-200 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl relative font-sans"
         >
           {/* Header Title */}
-          <div className="text-center border-b-2 border-zinc-900 pb-4">
+          <div className="text-center border-b-2 border-zinc-900 pb-3">
             <h1 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-zinc-900">
               RECIBO DE PRESTAÇÃO DE SERVIÇOS
             </h1>
           </div>
 
           {/* Valor Line */}
-          <div className="p-4 bg-zinc-100 border border-zinc-300 rounded-xl font-bold text-sm text-zinc-900">
+          <div className="p-3.5 bg-zinc-100 border border-zinc-300 rounded-xl font-bold text-sm text-zinc-900">
             <span className="uppercase tracking-wider">VALOR:</span>{' '}
             <span className="font-semibold">{amountInWords}, R${amountNumericStr}</span>
           </div>
 
           {/* Main Statement */}
-          <div className="text-sm leading-relaxed text-zinc-800 space-y-4">
-            <p className="text-justify leading-loose">
+          <div className="text-sm leading-relaxed text-zinc-800 space-y-3">
+            <p className="text-justify leading-relaxed">
               Recebi de <strong className="text-zinc-950 uppercase">{clientName}</strong>, inscrito no CNPJ sob o nº <strong className="text-zinc-950 font-mono">{clientDoc}</strong>, a importância de <strong>R${amountNumericStr}</strong>, referente à prestação de serviços de <strong className="text-zinc-950">{description}</strong>, realizados no período de <strong>{startDateStr}</strong> a <strong>{endDateStr}</strong>, conforme contrato de prestação de serviços vigente.
             </p>
           </div>
 
           {/* Dados do Prestador */}
-          <div className="p-5 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2 text-sm text-zinc-800">
+          <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-1.5 text-sm text-zinc-800">
             <h4 className="font-black uppercase tracking-wider text-zinc-900 text-xs border-b border-zinc-200 pb-1.5 mb-2">
               Dados do Prestador:
             </h4>
             <p className="flex items-start gap-2">
-              <span className="text-zinc-900 font-bold">● Nome:</span>
+              <span className="text-zinc-900 font-bold shrink-0">● Nome:</span>
               <span>{providerName}</span>
             </p>
             <p className="flex items-start gap-2">
-              <span className="text-zinc-900 font-bold">● CPF/CNPJ:</span>
+              <span className="text-zinc-900 font-bold shrink-0">● CPF/CNPJ:</span>
               <span className="font-mono">{providerDoc}</span>
             </p>
             <p className="flex items-start gap-2">
-              <span className="text-zinc-900 font-bold">● Endereço:</span>
+              <span className="text-zinc-900 font-bold shrink-0">● Endereço:</span>
               <span>{providerAddress}</span>
             </p>
           </div>
@@ -280,26 +302,26 @@ ${providerName}
           </div>
 
           {/* Date and Location */}
-          <div className="text-right text-sm font-semibold text-zinc-900 pt-2">
+          <div className="text-right text-sm font-semibold text-zinc-900 pt-1">
             {providerCity}, {dateInWords}.
           </div>
 
           {/* Signature Block */}
-          <div className="pt-10 flex flex-col items-center justify-center text-center space-y-1">
+          <div className="pt-6 flex flex-col items-center justify-center text-center space-y-1">
             {signatureUrl ? (
-              <div className="mb-[-12px] z-10">
+              <div className="mb-[-8px] z-10 min-h-[60px] flex items-end justify-center">
                 <img
                   src={signatureUrl}
                   alt={`Assinatura de ${providerName}`}
                   crossOrigin="anonymous"
-                  className="h-24 max-w-[280px] object-contain mx-auto"
+                  className="max-h-20 max-w-[260px] object-contain mx-auto"
                 />
               </div>
             ) : (
-              <div className="h-12" />
+              <div className="h-10" />
             )}
 
-            <div className="w-80 border-b border-zinc-800 mx-auto pt-2" />
+            <div className="w-72 border-b border-zinc-800 mx-auto pt-2" />
             <p className="text-xs font-bold uppercase tracking-wider text-zinc-900 pt-1">
               {providerName}
             </p>

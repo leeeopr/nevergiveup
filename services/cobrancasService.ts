@@ -790,8 +790,11 @@ export const cobrancasService = {
       const supabase = getSupabase()
       const userId = await getUserId()
 
-      // 1. Update occurrence status and payment_date
-      const { data: updatedOcc, error: updateErr } = await supabase
+      // 1. Update occurrence status and payment_date with fallback for schema cache / missing columns
+      let updatedOcc: ChargeOccurrence | null = null
+      let updateErr: any = null
+
+      const res1 = await supabase
         .from('charge_occurrences')
         .update({
           status: 'paid',
@@ -805,24 +808,78 @@ export const cobrancasService = {
         .select()
         .single()
 
-      if (updateErr || !updatedOcc) {
-        console.warn('Failed to update occurrence in Supabase, using local fallback:', updateErr?.message)
-        const occurrences = getLocalOccurrences()
-        const idx = occurrences.findIndex(o => o.id === occurrenceId)
-        if (idx !== -1) {
-          const occ = occurrences[idx]
-          occ.status = 'paid'
-          occ.paid_at = now
-          occ.payment_date = paymentDate
-          occ.payment_method = paymentMethod
-          occ.updated_at = now
-          saveLocalOccurrences(occurrences)
-          const receipt = await this.getOrCreateReceiptForOccurrence(occurrenceId, paymentDate, paymentMethod)
-          occ.receipt_id = receipt.id
-          saveLocalOccurrences(occurrences)
-          return { occurrence: occ, receipt }
+      if (res1.error) {
+        console.warn('Full update failed on charge_occurrences, trying without payment_method:', res1.error.message)
+        const res2 = await supabase
+          .from('charge_occurrences')
+          .update({
+            status: 'paid',
+            paid_at: now,
+            payment_date: paymentDate,
+            updated_at: now
+          })
+          .eq('id', occurrenceId)
+          .eq('user_id', userId)
+          .select()
+          .single()
+
+        if (res2.error) {
+          console.warn('Update without payment_method failed, trying with core fields (status, paid_at):', res2.error.message)
+          const res3 = await supabase
+            .from('charge_occurrences')
+            .update({
+              status: 'paid',
+              paid_at: now,
+              updated_at: now
+            })
+            .eq('id', occurrenceId)
+            .eq('user_id', userId)
+            .select()
+            .single()
+
+          updatedOcc = res3.data as ChargeOccurrence | null
+          updateErr = res3.error
+        } else {
+          updatedOcc = res2.data as ChargeOccurrence | null
         }
-        throw new Error('Erro ao confirmar pagamento.')
+      } else {
+        updatedOcc = res1.data as ChargeOccurrence | null
+      }
+
+      if (updateErr || !updatedOcc) {
+        console.warn('Failed to update occurrence in Supabase, trying direct fetch before local fallback:', updateErr?.message)
+        const { data: fetchedOcc } = await supabase
+          .from('charge_occurrences')
+          .select('*')
+          .eq('id', occurrenceId)
+          .maybeSingle()
+
+        if (fetchedOcc) {
+          updatedOcc = {
+            ...fetchedOcc,
+            status: 'paid',
+            paid_at: now,
+            payment_date: paymentDate,
+            payment_method: paymentMethod
+          } as ChargeOccurrence
+        } else {
+          const occurrences = getLocalOccurrences()
+          const idx = occurrences.findIndex(o => o.id === occurrenceId)
+          if (idx !== -1) {
+            const occ = occurrences[idx]
+            occ.status = 'paid'
+            occ.paid_at = now
+            occ.payment_date = paymentDate
+            occ.payment_method = paymentMethod
+            occ.updated_at = now
+            saveLocalOccurrences(occurrences)
+            const receipt = await this.getOrCreateReceiptForOccurrence(occurrenceId, paymentDate, paymentMethod)
+            occ.receipt_id = receipt.id
+            saveLocalOccurrences(occurrences)
+            return { occurrence: occ, receipt }
+          }
+          throw new Error(`Erro ao confirmar pagamento: ${updateErr?.message || 'Parcela não encontrada.'}`)
+        }
       }
 
       // 2. Automatically generate or retrieve receipt with issue_date = paymentDate

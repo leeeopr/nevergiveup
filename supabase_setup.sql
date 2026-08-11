@@ -546,6 +546,7 @@ CREATE TABLE IF NOT EXISTS public.charge_occurrences (
 
 -- Ensure extended columns exist on charge_occurrences
 ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS payment_date DATE;
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS payment_method TEXT;
 ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_id UUID;
 ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_sent BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMPTZ;
