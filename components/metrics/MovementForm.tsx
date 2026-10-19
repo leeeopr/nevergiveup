@@ -1,10 +1,27 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { MovementType, FinancialMovement, RecurrenceType } from '@/types/financial'
 import { financialService } from '@/services/financialService'
-import { Calendar, Tag, FileText, ChevronRight, Loader2, Sparkles, RefreshCcw } from 'lucide-react'
+import { personalDebtsService } from '@/services/personalDebtsService'
+import { DebtPerson } from '@/types/personalDebts'
+import { 
+  Calendar, 
+  Tag, 
+  FileText, 
+  ChevronRight, 
+  Loader2, 
+  Sparkles, 
+  RefreshCcw,
+  User,
+  UserPlus,
+  Search,
+  CheckCircle2,
+  AlertCircle,
+  PlusCircle,
+  X
+} from 'lucide-react'
 import { motion } from 'motion/react'
 
 interface MovementFormData {
@@ -20,6 +37,7 @@ interface MovementFormData {
   installments?: number
   savings_type?: string
   debtor_name?: string
+  debt_person_id?: string | null
   due_date?: string
   is_paid?: boolean
 }
@@ -35,8 +53,6 @@ interface MovementFormProps {
   onLoadingChange?: (loading: boolean) => void
 }
 
-const QUICK_PEOPLE = ['Pai', 'Mãe', 'Laura', 'Lucas', 'Thiago']
-
 export function MovementForm({ 
   type, 
   onCancel, 
@@ -48,18 +64,25 @@ export function MovementForm({
   onLoadingChange
 }: MovementFormProps) {
   const [loading, setLoading] = useState(false)
+  const [persons, setPersons] = useState<DebtPerson[]>([])
+  const [loadingPersons, setLoadingPersons] = useState(false)
+  const [searchPerson, setSearchPerson] = useState('')
+  const [isAddingNewPerson, setIsAddingNewPerson] = useState(false)
+  const [newPersonName, setNewPersonName] = useState('')
+  const [newPersonPhone, setNewPersonPhone] = useState('')
+  const [savingNewPerson, setSavingNewPerson] = useState(false)
   
   const setInternalLoading = (val: boolean) => {
     setLoading(val)
     onLoadingChange?.(val)
   }
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<MovementFormData>({
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<MovementFormData>({
     defaultValues: {
       amount: initialData?.amount || 0,
       description: initialData?.description || '',
       date: initialData?.date || new Date().toISOString().split('T')[0],
-      tag: initialData?.tag || '',
+      tag: initialData?.tag || (type === 'cobranca' ? 'Cobrança' : ''),
       is_recurring: initialData?.is_recurring ?? (type === 'saida_fixa' || type === 'entrada' || type === 'cobranca'),
       recurrence_type: initialData?.recurrence_type || 'mensal',
       recurrence_interval: initialData?.recurrence_interval || 1,
@@ -67,18 +90,127 @@ export function MovementForm({
       card_name: initialData?.card_name || '',
       installments: initialData?.installments || 1,
       debtor_name: initialData?.debtor_name || '',
+      debt_person_id: initialData?.debt_person_id || null,
       due_date: initialData?.due_date || initialData?.date || new Date().toISOString().split('T')[0],
       is_paid: initialData?.is_paid || false
     }
   })
 
+  // Synchronize form when editing different movements or when initialData changes
+  useEffect(() => {
+    if (initialData) {
+      reset({
+        amount: initialData.amount || 0,
+        description: initialData.description || '',
+        date: initialData.date || new Date().toISOString().split('T')[0],
+        tag: initialData.tag || (type === 'cobranca' ? 'Cobrança' : ''),
+        is_recurring: initialData.is_recurring ?? (type === 'saida_fixa' || type === 'entrada' || type === 'cobranca'),
+        recurrence_type: initialData.recurrence_type || 'mensal',
+        recurrence_interval: initialData.recurrence_interval || 1,
+        recurrence_end_date: initialData.recurrence_end_date || '',
+        card_name: initialData.card_name || '',
+        installments: initialData.installments || 1,
+        debtor_name: initialData.debtor_name || '',
+        debt_person_id: initialData.debt_person_id || null,
+        due_date: initialData.due_date || initialData.date || new Date().toISOString().split('T')[0],
+        is_paid: initialData.is_paid || false
+      })
+    }
+  }, [initialData, id, type, reset])
+
   const isRecurring = watch('is_recurring')
   const recurrenceType = watch('recurrence_type')
   const debtorName = watch('debtor_name')
+  const debtPersonId = watch('debt_person_id')
+
+  // Load registered persons from Cobrança tab
+  useEffect(() => {
+    if (type === 'cobranca') {
+      let isMounted = true
+      setLoadingPersons(true)
+      personalDebtsService.getPersons()
+        .then((data) => {
+          if (isMounted) {
+            setPersons(data)
+            // Pre-select if initialData exists
+            if (initialData?.debt_person_id) {
+              const matched = data.find(p => p.id === initialData.debt_person_id)
+              if (matched) {
+                setValue('debt_person_id', matched.id, { shouldValidate: true })
+                setValue('debtor_name', matched.name, { shouldValidate: true })
+              }
+            } else if (initialData?.debtor_name) {
+              const matchedByName = data.find(p => p.name.toLowerCase() === initialData.debtor_name?.toLowerCase())
+              if (matchedByName) {
+                setValue('debt_person_id', matchedByName.id, { shouldValidate: true })
+              }
+            }
+          }
+        })
+        .catch(err => console.warn('Failed to load persons in MovementForm:', err))
+        .finally(() => {
+          if (isMounted) setLoadingPersons(false)
+        })
+      return () => { isMounted = false }
+    }
+  }, [type, initialData, setValue])
+
+  const selectedPerson = useMemo(() => {
+    if (!debtPersonId && !debtorName) return null
+    return persons.find(p => p.id === debtPersonId) || (debtorName ? persons.find(p => p.name.toLowerCase() === debtorName.toLowerCase()) : null) || null
+  }, [persons, debtPersonId, debtorName])
+
+  const filteredPersons = useMemo(() => {
+    if (!searchPerson.trim()) return persons
+    const q = searchPerson.toLowerCase()
+    return persons.filter(p => p.name.toLowerCase().includes(q) || (p.phone && p.phone.includes(q)))
+  }, [persons, searchPerson])
+
+  const handleCreateNewPerson = async () => {
+    if (!newPersonName.trim()) return
+    setSavingNewPerson(true)
+    try {
+      const created = await personalDebtsService.createPerson({
+        name: newPersonName.trim(),
+        phone: newPersonPhone.trim() || undefined
+      })
+      setPersons(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      setValue('debt_person_id', created.id, { shouldValidate: true })
+      setValue('debtor_name', created.name, { shouldValidate: true })
+      setIsAddingNewPerson(false)
+      setNewPersonName('')
+      setNewPersonPhone('')
+    } catch (err: any) {
+      alert(err.message || 'Erro ao cadastrar pessoa.')
+    } finally {
+      setSavingNewPerson(false)
+    }
+  }
 
   const onSubmit = async (data: MovementFormData) => {
     try {
       setInternalLoading(true)
+
+      let resolvedPersonId = data.debt_person_id || null
+      let resolvedDebtorName = data.debtor_name?.trim() || ''
+
+      if (type === 'cobranca') {
+        // Ensure person link exists and resolve by name if needed
+        if (!resolvedPersonId && resolvedDebtorName) {
+          const matched = persons.find(p => p.name.toLowerCase() === resolvedDebtorName.toLowerCase())
+          if (matched) {
+            resolvedPersonId = matched.id
+            resolvedDebtorName = matched.name
+          }
+        }
+
+        if (!resolvedPersonId && !resolvedDebtorName) {
+          alert('Por favor, selecione ou cadastre uma pessoa na aba Cobrança para vincular a esta cobrança.')
+          setInternalLoading(false)
+          return
+        }
+      }
+
       const payload: any = {
         type,
         amount: Number(data.amount),
@@ -94,7 +226,8 @@ export function MovementForm({
       }
 
       if (type === 'cobranca') {
-        payload.debtor_name = data.debtor_name
+        payload.debt_person_id = resolvedPersonId
+        payload.debtor_name = resolvedDebtorName
         payload.due_date = data.due_date
         payload.is_paid = data.is_paid
         if (data.is_paid && !initialData?.is_paid) {
@@ -185,37 +318,226 @@ export function MovementForm({
           />
         </div>
 
-        {/* Specialized Fields: Cobrança */}
+        {/* Specialized Fields: Cobrança vinculada às pessoas da aba Cobrança */}
         {type === 'cobranca' && (
           <div className="sm:col-span-2 space-y-6 pt-4 border-t border-[var(--border)]">
-            <div className="space-y-4">
-              <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--orange)] uppercase tracking-[0.2em] ml-1">
-                Devedor Principal
-              </label>
-              
-              <div className="flex flex-wrap gap-2 mb-4">
-                {QUICK_PEOPLE.map(person => (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-[10px] sm:text-[11px] font-black text-[var(--orange)] uppercase tracking-[0.2em] ml-1">
+                  <User size={14} /> Devedor / Pessoa Vinculada *
+                </label>
+                {!isAddingNewPerson && (
                   <button
-                    key={person}
                     type="button"
-                    onClick={() => setValue('debtor_name', person)}
-                    className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border cursor-pointer ${
-                      debtorName === person 
-                        ? 'bg-[var(--orange)]/15 text-[var(--orange)] border-[var(--orange)]/40' 
-                        : 'bg-[var(--surface-accent)]/20 text-[var(--text-muted)] border-[var(--border)] hover:bg-[var(--surface-accent)]/45'
-                    }`}
+                    onClick={() => {
+                      setNewPersonName(searchPerson.trim())
+                      setIsAddingNewPerson(true)
+                    }}
+                    className="text-[10px] font-black uppercase text-[var(--orange)] hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    {person}
+                    <PlusCircle size={12} />
+                    <span>+ Nova Pessoa</span>
                   </button>
-                ))}
+                )}
               </div>
 
-              <input 
-                type="text"
-                placeholder="Nome do Devedor..."
-                className="w-full bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl p-4 text-[var(--text-main)] placeholder:text-[var(--text-muted)]/50 text-sm font-semibold"
-                {...register('debtor_name', { required: type === 'cobranca' })}
-              />
+              {/* Se estiver adicionando pessoa inline */}
+              {isAddingNewPerson ? (
+                <div className="p-4 bg-[var(--surface-accent)]/30 border border-[var(--orange)]/30 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-[var(--text-main)] uppercase tracking-wider flex items-center gap-1.5">
+                      <UserPlus size={14} className="text-[var(--orange)]" />
+                      Cadastrar Pessoa na Aba Cobrança
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewPerson(false)}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-main)] p-1 cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nome completo..."
+                      value={newPersonName}
+                      onChange={(e) => setNewPersonName(e.target.value)}
+                      className="px-3.5 py-2.5 bg-black/20 border border-[var(--border)] rounded-xl text-xs font-semibold text-[var(--text-main)] placeholder:text-[var(--text-muted)]/40 focus:outline-none focus:border-[var(--orange)]"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Telefone / WhatsApp (opcional)..."
+                      value={newPersonPhone}
+                      onChange={(e) => setNewPersonPhone(e.target.value)}
+                      className="px-3.5 py-2.5 bg-black/20 border border-[var(--border)] rounded-xl text-xs font-semibold text-[var(--text-main)] placeholder:text-[var(--text-muted)]/40 focus:outline-none focus:border-[var(--orange)]"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewPerson(false)}
+                      className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingNewPerson || !newPersonName.trim()}
+                      onClick={handleCreateNewPerson}
+                      className="px-4 py-1.5 bg-[var(--orange)] text-zinc-950 text-[10px] font-black uppercase tracking-wider rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+                    >
+                      {savingNewPerson ? 'Salvando...' : 'Salvar e Selecionar'}
+                    </button>
+                  </div>
+                </div>
+              ) : selectedPerson ? (
+                /* Card da pessoa selecionada */
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-black text-xs shrink-0">
+                      {selectedPerson.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-black text-[var(--text-main)] block truncate">
+                        {selectedPerson.name}
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-0.5">
+                        <CheckCircle2 size={11} />
+                        Vinculado à pessoa da aba Cobrança {selectedPerson.phone ? `• ${selectedPerson.phone}` : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValue('debt_person_id', null)
+                      setValue('debtor_name', '')
+                    }}
+                    className="px-3 py-1.5 bg-[var(--surface-accent)]/50 hover:bg-[var(--surface-accent)] text-[var(--text-main)] text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer shrink-0 border border-[var(--border)]"
+                  >
+                    Trocar
+                  </button>
+                </div>
+              ) : debtorName ? (
+                /* Caso tenha nome de devedor anterior não vinculado */
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-[var(--text-main)] block truncate">
+                      {debtorName}
+                    </span>
+                    <span className="text-[10px] text-amber-400 font-bold flex items-center gap-1 mt-0.5">
+                      <AlertCircle size={11} />
+                      Nome informado, porém não vinculado a uma pessoa da aba Cobrança
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewPersonName(debtorName)
+                        setIsAddingNewPerson(true)
+                      }}
+                      className="flex-1 sm:flex-none px-3 py-1.5 bg-[var(--orange)] text-zinc-950 text-[10px] font-black uppercase tracking-wider rounded-xl hover:opacity-90 transition-opacity cursor-pointer text-center"
+                    >
+                      Cadastrar Pessoa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setValue('debt_person_id', null)
+                        setValue('debtor_name', '')
+                      }}
+                      className="flex-1 sm:flex-none px-3 py-1.5 bg-[var(--surface-accent)]/50 hover:bg-[var(--surface-accent)] text-[var(--text-main)] text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center border border-[var(--border)]"
+                    >
+                      Trocar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Lista e Busca de Pessoas da Aba Cobrança */
+                <div className="space-y-2.5">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]/50" />
+                    <input
+                      type="text"
+                      placeholder="Pesquisar pessoa cadastrada por nome..."
+                      value={searchPerson}
+                      onChange={(e) => setSearchPerson(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl text-xs font-medium text-[var(--text-main)] placeholder:text-[var(--text-muted)]/50 focus:outline-none focus:border-[var(--orange)] transition-colors"
+                    />
+                  </div>
+
+                  {loadingPersons ? (
+                    <div className="py-4 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
+                      <Loader2 size={14} className="animate-spin text-[var(--orange)]" />
+                      <span>Carregando pessoas da aba Cobrança...</span>
+                    </div>
+                  ) : filteredPersons.length === 0 ? (
+                    <div className="p-4 bg-black/15 border border-[var(--border)] rounded-2xl text-center space-y-2">
+                      <p className="text-xs text-[var(--text-muted)]">
+                        {persons.length === 0
+                          ? 'Nenhuma pessoa cadastrada na aba Cobrança ainda.'
+                          : 'Nenhuma pessoa encontrada com esse termo de busca.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPersonName(searchPerson.trim())
+                          setIsAddingNewPerson(true)
+                        }}
+                        className="px-4 py-2 bg-[var(--orange)]/15 border border-[var(--orange)]/30 text-[var(--orange)] rounded-xl text-xs font-bold hover:bg-[var(--orange)]/25 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <PlusCircle size={13} />
+                        <span>Cadastrar &ldquo;{searchPerson.trim() || 'Nova Pessoa'}&rdquo;</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="max-h-44 overflow-y-auto custom-scrollbar space-y-1.5 pr-1">
+                      {filteredPersons.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setValue('debt_person_id', p.id, { shouldValidate: true })
+                            setValue('debtor_name', p.name, { shouldValidate: true })
+                            setSearchPerson('')
+                          }}
+                          className="w-full flex items-center justify-between p-2.5 bg-[var(--surface-accent)]/20 hover:bg-[var(--orange)]/10 border border-[var(--border)] hover:border-[var(--orange)]/30 rounded-xl transition-all cursor-pointer text-left group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-[var(--surface)] group-hover:bg-[var(--orange)]/20 text-[var(--text-main)] group-hover:text-[var(--orange)] border border-[var(--border)] flex items-center justify-center font-black text-[11px] shrink-0">
+                              {p.name.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-[var(--text-main)] block truncate group-hover:text-[var(--orange)]">
+                                {p.name}
+                              </span>
+                              {p.phone && (
+                                <span className="text-[10px] text-[var(--text-muted)] block truncate">
+                                  {p.phone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase text-[var(--text-muted)] group-hover:text-[var(--orange)] shrink-0 ml-2">
+                            Selecionar →
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Hidden inputs to preserve react-hook-form bindings */}
+                  <input type="hidden" {...register('debt_person_id')} />
+                  <input type="hidden" {...register('debtor_name', { required: type === 'cobranca' })} />
+                  {errors.debtor_name && (
+                    <p className="text-[var(--danger)] text-[10px] uppercase font-black tracking-widest mt-1 ml-1">
+                      Por favor, selecione ou cadastre uma pessoa para esta cobrança.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -228,12 +550,15 @@ export function MovementForm({
                 />
               </div>
               <div className="space-y-2 relative">
-                <label className="text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1 text-center block">Status</label>
-                <label className="flex items-center justify-center gap-3 cursor-pointer p-4 bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl border-dashed border-[var(--border)] group h-[54px] relative">
+                <label className="text-[10px] sm:text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] ml-1 text-center block">Situação</label>
+                <label className="flex items-center justify-center gap-3 cursor-pointer p-4 bg-[var(--surface-accent)]/35 border border-[var(--border)] rounded-xl group h-[54px] relative">
                   <input type="checkbox" className="sr-only peer" {...register('is_paid')} />
-                  <div className="w-10 h-6 bg-[var(--surface-accent)]/45 border border-[var(--border)] rounded-full peer peer-checked:bg-[var(--orange)]/15 peer-checked:border-[var(--orange)]/40 transition-all relative" />
-                  <div className="absolute left-[20px] top-[19px] w-4 h-4 bg-[var(--text-muted)] rounded-full transition-all peer-checked:translate-x-4 peer-checked:bg-[var(--orange)] pointer-events-none" />
-                  <span className="text-[10px] font-black text-[var(--text-muted)] group-hover:text-[var(--text-main)] transition-colors uppercase tracking-[0.2em]">PAGO?</span>
+                  <div className="w-10 h-6 bg-[var(--surface-accent)]/45 border border-[var(--border)] rounded-full peer peer-checked:bg-emerald-500/20 peer-checked:border-emerald-500/40 transition-all relative shrink-0">
+                    <div className="w-4 h-4 bg-[var(--text-muted)] rounded-full transition-all peer-checked:translate-x-4 peer-checked:bg-emerald-400 absolute left-1 top-1" />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em] transition-colors peer-checked:text-emerald-400 text-amber-400">
+                    {watch('is_paid') ? 'Recebido' : 'Pendente'}
+                  </span>
                 </label>
               </div>
             </div>

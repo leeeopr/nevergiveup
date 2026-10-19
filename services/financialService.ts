@@ -209,6 +209,20 @@ export const financialService = {
     const supabase = getSupabase()
     const userId = await getUserId()
 
+    // Validate that debt_person_id belongs to the authenticated user scope
+    if (movement.debt_person_id) {
+      const { data: personCheck, error: checkErr } = await supabase
+        .from('debt_persons')
+        .select('id, name')
+        .eq('id', movement.debt_person_id)
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (checkErr || !personCheck) {
+        throw new Error('A pessoa vinculada à cobrança não foi encontrada ou não pertence a esta conta.')
+      }
+    }
+
     const { data, error } = await supabase
       .from('financial_movements')
       .insert({
@@ -260,6 +274,21 @@ export const financialService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+
+    // Validate that debt_person_id belongs to the authenticated user scope if being modified
+    if (movement.debt_person_id) {
+      const { data: personCheck, error: checkErr } = await supabase
+        .from('debt_persons')
+        .select('id, name')
+        .eq('id', movement.debt_person_id)
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (checkErr || !personCheck) {
+        throw new Error('A pessoa selecionada não foi encontrada ou não pertence a esta conta.')
+      }
+    }
+
     const { data, error } = await supabase
       .from('financial_movements')
       .update(movement)
@@ -335,5 +364,39 @@ export const financialService = {
     }
     
     return data || []
+  },
+
+  async decouplePersonFromMovements(personId: string): Promise<void> {
+    if (isLocalFallbackActive()) {
+      const all = getLocalMovements()
+      const updated = all.map(m => m.debt_person_id === personId ? { ...m, debt_person_id: null } : m)
+      saveLocalMovements(updated)
+      return
+    }
+
+    const supabase = getSupabase()
+    const userId = await getUserId()
+    await supabase
+      .from('financial_movements')
+      .update({ debt_person_id: null })
+      .eq('debt_person_id', personId)
+      .eq('user_id', userId)
+  },
+
+  async syncPersonNameInMovements(personId: string, newName: string): Promise<void> {
+    if (isLocalFallbackActive()) {
+      const all = getLocalMovements()
+      const updated = all.map(m => m.debt_person_id === personId ? { ...m, debtor_name: newName } : m)
+      saveLocalMovements(updated)
+      return
+    }
+
+    const supabase = getSupabase()
+    const userId = await getUserId()
+    await supabase
+      .from('financial_movements')
+      .update({ debtor_name: newName })
+      .eq('debt_person_id', personId)
+      .eq('user_id', userId)
   }
 }

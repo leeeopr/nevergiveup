@@ -1,3 +1,5 @@
+import { FinancialMovement } from '@/types/financial'
+
 export type DebtDirection = 'to_receive' | 'to_pay'
 
 export type DebtStatus = 'pending' | 'partially_paid' | 'paid'
@@ -45,6 +47,7 @@ export interface Debt {
 
 export interface PersonWithDebts extends DebtPerson {
   debts: Debt[]
+  linkedMovements?: FinancialMovement[]
   totalToReceive: number // Sum of remaining balance to receive
   totalToPay: number // Sum of remaining balance to pay
   netBalance: number // totalToReceive - totalToPay

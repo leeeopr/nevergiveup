@@ -150,6 +150,27 @@ function ensureLocalSeed() {
 }
 
 export const personalDebtsService = {
+  async getPersons(): Promise<DebtPerson[]> {
+    if (isLocalFallbackActive()) {
+      ensureLocalSeed()
+      return getStoredPersons().sort((a, b) => a.name.localeCompare(b.name))
+    }
+    const supabase = getSupabase()
+    const userId = await getUserId()
+    const { data, error } = await supabase
+      .from('debt_persons')
+      .select('*')
+      .eq('user_id', userId)
+      .order('name', { ascending: true })
+
+    if (error) {
+      console.warn('Erro ao carregar pessoas do Supabase, recorrendo ao cache local:', error)
+      ensureLocalSeed()
+      return getStoredPersons().sort((a, b) => a.name.localeCompare(b.name))
+    }
+    return data || []
+  },
+
   async getPersonsWithDebts(): Promise<PersonWithDebts[]> {
     const todayStr = format(new Date(), 'yyyy-MM-dd')
 
@@ -158,6 +179,8 @@ export const personalDebtsService = {
       const persons = getStoredPersons()
       const debts = getStoredDebts()
       const payments = getStoredPayments()
+      const allMovements = await financialService.getAllMovements()
+      const cobrancaMovements = allMovements.filter(m => m.type === 'cobranca')
 
       return persons.map(person => {
         const personDebts = debts
@@ -202,9 +225,15 @@ export const personalDebtsService = {
         const hasOverdue = personDebts.some(d => d.is_overdue)
         const isSettled = personDebts.length > 0 && personDebts.every(d => d.status === 'paid')
 
+        // Movements of type 'cobranca' created via central FAB linked to this person
+        const linkedMovements = cobrancaMovements.filter(m => 
+          m.debt_person_id === person.id || (!m.debt_person_id && m.debtor_name?.trim().toLowerCase() === person.name.trim().toLowerCase())
+        )
+
         return {
           ...person,
           debts: personDebts,
+          linkedMovements,
           totalToReceive,
           totalToPay,
           netBalance,
@@ -224,10 +253,11 @@ export const personalDebtsService = {
     const userId = await getUserId()
 
     try {
-      const [personsRes, debtsRes, paymentsRes] = await Promise.all([
+      const [personsRes, debtsRes, paymentsRes, movementsRes] = await Promise.all([
         supabase.from('debt_persons').select('*').eq('user_id', userId).order('name', { ascending: true }),
         supabase.from('debts').select('*').eq('user_id', userId),
-        supabase.from('debt_payments').select('*').eq('user_id', userId)
+        supabase.from('debt_payments').select('*').eq('user_id', userId),
+        supabase.from('financial_movements').select('*').eq('user_id', userId).eq('type', 'cobranca')
       ])
 
       if (personsRes.error) throw personsRes.error
@@ -237,6 +267,7 @@ export const personalDebtsService = {
       const persons: DebtPerson[] = personsRes.data || []
       const debts: Debt[] = debtsRes.data || []
       const payments: DebtPayment[] = paymentsRes.data || []
+      const cobrancaMovements: any[] = movementsRes.data || []
 
       return persons.map(person => {
         const personDebts = debts
@@ -282,9 +313,14 @@ export const personalDebtsService = {
         const hasOverdue = personDebts.some(d => d.is_overdue)
         const isSettled = personDebts.length > 0 && personDebts.every(d => d.status === 'paid')
 
+        const linkedMovements = cobrancaMovements.filter(m => 
+          m.debt_person_id === person.id || (!m.debt_person_id && m.debtor_name?.trim().toLowerCase() === person.name.trim().toLowerCase())
+        )
+
         return {
           ...person,
           debts: personDebts,
+          linkedMovements,
           totalToReceive,
           totalToPay,
           netBalance,
@@ -362,6 +398,9 @@ export const personalDebtsService = {
       }
       persons[idx] = updated
       saveStoredPersons(persons)
+
+      // Keep debtor_name in sync in linked financial movements
+      await financialService.syncPersonNameInMovements(id, trimmedName)
       return updated
     }
 
@@ -384,6 +423,9 @@ export const personalDebtsService = {
     if (error) {
       throw new Error(`Falha ao atualizar dados da pessoa: ${error.message}`)
     }
+
+    // Keep debtor_name in sync in linked financial movements
+    await financialService.syncPersonNameInMovements(id, trimmedName)
     return data
   },
 
@@ -404,6 +446,9 @@ export const personalDebtsService = {
       const remainingDebts = getStoredDebts().filter(d => d.person_id !== id)
       const remainingPayments = payments.filter(p => !debtIds.has(p.debt_id))
 
+      // Decouple linked cobranças movements in financial_movements
+      await financialService.decouplePersonFromMovements(id)
+
       saveStoredPersons(persons)
       saveStoredDebts(remainingDebts)
       saveStoredPayments(remainingPayments)
@@ -412,6 +457,9 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+
+    // Decouple linked cobranças movements in financial_movements
+    await financialService.decouplePersonFromMovements(id)
 
     // Find debts and payments to clean linked movements
     const { data: debts } = await supabase.from('debts').select('id').eq('person_id', id).eq('user_id', userId)

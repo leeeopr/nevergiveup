@@ -135,7 +135,7 @@ export function PersonCard({ person, onSelect, onAddDebt, onEdit, onDelete }: Pe
         </div>
 
         {/* Saldo Líquido Card Banner */}
-        <div className={`p-3.5 rounded-2xl border flex items-center justify-between mb-4 ${
+        <div className={`p-3.5 rounded-2xl border flex items-center justify-between mb-3.5 ${
           isNetPositive
             ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
             : isNetNegative
@@ -157,6 +157,33 @@ export function PersonCard({ person, onSelect, onAddDebt, onEdit, onDelete }: Pe
             </span>
           </div>
         </div>
+
+        {/* Linked Cobranças do Painel indicator */}
+        {person.linkedMovements && person.linkedMovements.length > 0 && (() => {
+          const totalVal = person.linkedMovements.reduce((acc, m) => acc + Number(m.amount), 0)
+          const pendingCount = person.linkedMovements.filter(m => !m.is_paid).length
+          const isPending = pendingCount > 0
+          return (
+            <div 
+              onClick={() => onSelect(person)}
+              className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-orange-500/10 hover:bg-orange-500/15 border border-orange-500/25 text-[10px] text-orange-300 mb-3.5 transition-colors cursor-pointer group/cob"
+              title="Clique para ver os detalhes das cobranças vinculadas no painel"
+            >
+              <span className="font-bold flex items-center gap-1.5">
+                <span className="text-sm">🏷️</span>
+                <span>
+                  {person.linkedMovements.length} cobrança{person.linkedMovements.length !== 1 ? 's' : ''} no fluxo geral
+                  {isPending && (
+                    <span className="text-amber-400 font-extrabold ml-1">({pendingCount} pendente{pendingCount !== 1 ? 's' : ''})</span>
+                  )}
+                </span>
+              </span>
+              <span className="font-mono font-black text-orange-400 group-hover/cob:translate-x-0.5 transition-transform">
+                {formatMoney(totalVal)} →
+              </span>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Footer Info & Action */}

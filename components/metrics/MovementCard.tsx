@@ -74,9 +74,13 @@ export function MovementCard({ movement, onClick }: MovementCardProps) {
           )}
         </div>
         <div className="text-left">
-          <h4 className="text-sm font-bold text-[var(--text-main)] line-clamp-1">
-            {movement.description}
-            {movement.debtor_name && <span className="text-[var(--text-muted)] font-normal text-xs ml-2">({movement.debtor_name})</span>}
+          <h4 className="text-sm font-bold text-[var(--text-main)] line-clamp-1 flex items-center gap-1.5">
+            <span>{movement.description}</span>
+            {movement.debtor_name && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full shrink-0 font-sans">
+                👤 {movement.debtor_name}
+              </span>
+            )}
           </h4>
           <div className="flex items-center gap-2 mt-0.5">
             <span className={`text-[10px] font-black uppercase tracking-widest ${isCobranca && !movement.is_paid ? 'text-[var(--orange)]' : 'text-[var(--text-muted)]'}`}>

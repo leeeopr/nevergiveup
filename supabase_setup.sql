@@ -645,6 +645,41 @@ WITH CHECK (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_debt_payments_user_id ON public.debt_payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_debt_payments_debt_id ON public.debt_payments(debt_id);
 
+-- Relacionamento seguro entre financial_movements (tipo 'cobranca') e debt_persons
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'financial_movements' AND column_name = 'debt_person_id'
+    ) THEN
+        ALTER TABLE public.financial_movements ADD COLUMN debt_person_id UUID REFERENCES public.debt_persons(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_movements_debt_person_id ON public.financial_movements(debt_person_id);
+
+-- Validação de isolamento no Banco: Garante que debt_person_id pertença estritamente ao mesmo usuário (user_id)
+CREATE OR REPLACE FUNCTION public.validate_movement_debt_person_owner()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.debt_person_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM public.debt_persons 
+            WHERE id = NEW.debt_person_id AND user_id = NEW.user_id
+        ) THEN
+            RAISE EXCEPTION 'A pessoa vinculada à cobrança não pertence ao usuário autenticado.';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_validate_movement_debt_person ON public.financial_movements;
+CREATE TRIGGER trg_validate_movement_debt_person
+BEFORE INSERT OR UPDATE OF debt_person_id, user_id ON public.financial_movements
+FOR EACH ROW EXECUTE FUNCTION public.validate_movement_debt_person_owner();
+
+
 
 
 

@@ -3,11 +3,16 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { personalDebtsService } from '@/services/personalDebtsService'
 import { PersonWithDebts, Debt, DebtDirection, GlobalDebtsMetrics } from '@/types/personalDebts'
+import { FinancialMovement } from '@/types/financial'
+import { financialService } from '@/services/financialService'
 import { PersonCard } from './PersonCard'
 import { PersonFormModal } from './PersonFormModal'
 import { DebtFormModal } from './DebtFormModal'
 import { PaymentModal } from './PaymentModal'
 import { PersonDetailModal } from './PersonDetailModal'
+import { MovementForm } from '@/components/metrics/MovementForm'
+import { EditMovementSheet } from '@/components/metrics/EditMovementSheet'
+import { DialogShell } from '@/components/ui/DialogShell'
 import { 
   Users, 
   PlusCircle, 
@@ -19,7 +24,11 @@ import {
   CheckCircle2, 
   Filter, 
   RefreshCw,
-  Clock
+  Clock,
+  HandCoins,
+  X,
+  Sparkles,
+  Loader2
 } from 'lucide-react'
 
 interface CobrancasTabProps {
@@ -49,6 +58,12 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [paymentModalDebt, setPaymentModalDebt] = useState<Debt | null>(null)
   const [paymentModalPersonName, setPaymentModalPersonName] = useState('')
+
+  // Linked Cobranças State
+  const [isCreateCobrancaOpen, setIsCreateCobrancaOpen] = useState(false)
+  const [createCobrancaPerson, setCreateCobrancaPerson] = useState<PersonWithDebts | null>(null)
+  const [editingMovement, setEditingMovement] = useState<FinancialMovement | null>(null)
+  const [savingCobranca, setSavingCobranca] = useState(false)
 
   // Load Data
   const loadData = useCallback(async () => {
@@ -199,6 +214,29 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
 
   const handleDeletePayment = async (paymentId: string, debtId: string) => {
     await personalDebtsService.deletePayment(paymentId, debtId)
+    await loadData()
+    if (onMovementCreated) onMovementCreated()
+  }
+
+  // Linked Cobranças (Fluxo Geral) Handlers
+  const handleOpenCreateCobranca = (person: PersonWithDebts) => {
+    setCreateCobrancaPerson(person)
+    setIsCreateCobrancaOpen(true)
+  }
+
+  const handleToggleMovementStatus = async (mov: FinancialMovement) => {
+    const nextPaid = !mov.is_paid
+    await financialService.updateMovement(mov.id, {
+      ...mov,
+      is_paid: nextPaid,
+      paid_at: nextPaid ? new Date().toISOString() : undefined
+    })
+    await loadData()
+    if (onMovementCreated) onMovementCreated()
+  }
+
+  const handleDeleteMovement = async (movementId: string) => {
+    await financialService.deleteMovement(movementId)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }
@@ -455,6 +493,10 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
         onEditDebt={handleOpenEditDebt}
         onDeleteDebt={handleDeleteDebt}
         onOpenPayment={handleOpenPayment}
+        onOpenCreateCobranca={handleOpenCreateCobranca}
+        onEditMovement={(mov) => setEditingMovement(mov)}
+        onToggleMovementStatus={handleToggleMovementStatus}
+        onDeleteMovement={handleDeleteMovement}
       />
 
       {/* Create / Edit Debt Modal */}
@@ -475,6 +517,78 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
         onRegisterPayment={handleRegisterPayment}
         onDeletePayment={handleDeletePayment}
       />
+
+      {/* Edit Movement Sheet for Linked Cobranças */}
+      <EditMovementSheet
+        movement={editingMovement}
+        onClose={() => setEditingMovement(null)}
+        onSuccess={async () => {
+          setEditingMovement(null)
+          await loadData()
+          if (onMovementCreated) onMovementCreated()
+        }}
+      />
+
+      {/* Direct Create Cobrança for Specific Person Modal */}
+      <DialogShell
+        isOpen={isCreateCobrancaOpen}
+        onClose={() => setIsCreateCobrancaOpen(false)}
+        header={
+          <div className="flex justify-between items-center mb-6">
+            <div className="space-y-0.5 mt-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--orange)] mb-1">Fluxo Geral de Cobrança</p>
+              <h3 className="text-xl sm:text-2xl font-black text-[var(--text-main)] tracking-tighter">
+                Emitir Cobrança para {createCobrancaPerson?.name}
+              </h3>
+            </div>
+            <button
+              onClick={() => setIsCreateCobrancaOpen(false)}
+              className="p-3 bg-[var(--surface-accent)]/45 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all border border-[var(--border)] mt-2 cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        }
+        footer={
+          <div className="flex gap-4 pt-6 border-t border-[var(--border)] bg-[var(--surface)]">
+            <button
+              type="button"
+              onClick={() => setIsCreateCobrancaOpen(false)}
+              className="flex-1 py-4 px-6 rounded-xl border border-[var(--border)] text-[var(--text-muted)] font-black uppercase tracking-[0.2em] text-[10px] hover:bg-[var(--surface-accent)]/40 transition-all active:scale-95 bg-[var(--surface)] cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              form="person-create-cobranca-form"
+              type="submit"
+              disabled={savingCobranca}
+              className="flex-[2] py-4 px-6 rounded-xl bg-wood-teak text-white font-black uppercase tracking-[0.22em] text-[10px] hover:scale-[1.01] active:scale-98 transition-all shadow-2xl flex items-center justify-center gap-2 border border-white/10 cursor-pointer"
+            >
+              {savingCobranca ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="opacity-60" /> Registrar Cobrança</>}
+            </button>
+          </div>
+        }
+      >
+        <div className="px-0 sm:px-2">
+          <MovementForm
+            formId="person-create-cobranca-form"
+            hideFooter={true}
+            onLoadingChange={setSavingCobranca}
+            type="cobranca"
+            initialData={{
+              debt_person_id: createCobrancaPerson?.id,
+              debtor_name: createCobrancaPerson?.name,
+              tag: 'Cobrança'
+            }}
+            onCancel={() => setIsCreateCobrancaOpen(false)}
+            onSuccess={async () => {
+              setIsCreateCobrancaOpen(false)
+              await loadData()
+              if (onMovementCreated) onMovementCreated()
+            }}
+          />
+        </div>
+      </DialogShell>
     </div>
   )
 }

@@ -197,10 +197,15 @@ export function MovementHistoryTable({ movements, onEdit, onRefresh }: MovementH
 
                   {/* Descrição */}
                   <td className="py-4 px-6">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-bold text-silver-polished group-hover:text-amber-300 transition-colors">
                         {move.description}
                       </span>
+                      {move.debtor_name && (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full shrink-0" title="Pessoa vinculada na aba Cobrança">
+                          👤 {move.debtor_name}
+                        </span>
+                      )}
                       {move.is_recurring && (
                         <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-white/5 text-silver-brushed/60 border border-white/10 shrink-0">
                           {move.recurrence_type || 'Recorrente'}
