@@ -18,6 +18,10 @@ const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
     title: 'Painel Corporativo',
     subtitle: 'Consolidação de saldo, metas, custo de vida e métricas em tempo real.'
   },
+  cobrancas: {
+    title: 'Cobranças & Dívidas Pessoais',
+    subtitle: 'Controle individual de valores a receber e a pagar por pessoa com conciliação e histórico.'
+  },
   projection: {
     title: 'Projeção Financeira',
     subtitle: 'Simulação preditiva de saldos e compromissos futuros no tempo.'

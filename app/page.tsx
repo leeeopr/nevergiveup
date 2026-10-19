@@ -17,6 +17,7 @@ import { StructuralTab } from '@/components/metrics/StructuralTab'
 import { FinancialProjectionTab } from '@/components/metrics/FinancialProjectionCard'
 import { GoogleCalendarSettingsCard } from '@/components/metrics/GoogleCalendarSettingsCard'
 import { EmpresaTab } from '@/components/empresa/EmpresaTab'
+import { CobrancasTab } from '@/components/cobrancas/CobrancasTab'
 import { DailyBalanceHeader } from '@/components/metrics/DailyBalanceHeader'
 import { CobrancasSummary } from '@/components/metrics/CobrancasSummary'
 import { RollingBalanceEngine } from '@/services/RollingBalanceEngine'
@@ -33,7 +34,7 @@ export default function MetricsPage() {
   const { user, profile, loading: authLoading, signOut, isDbConnected, isOffline, toggleEmpresaMode } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [activeTab, setActiveTab] = useState<'metrics' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'>('metrics')
+  const [activeTab, setActiveTab] = useState<'metrics' | 'cobrancas' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
   const [externalFabTrigger, setExternalFabTrigger] = useState(0)
 
@@ -327,7 +328,7 @@ export default function MetricsPage() {
                   todayBalance={todayBalance} 
                   isStable={totalBalance >= 0}
                 />
-                <CobrancasSummary movements={movements} />
+                <CobrancasSummary movements={movements} onOpenCobrancas={() => setActiveTab('cobrancas')} />
               </div>
 
               {/* Middle Section: Performance & Forecast */}
@@ -420,6 +421,15 @@ export default function MetricsPage() {
                 )}
               </div>
             </motion.div>
+          ) : activeTab === 'cobrancas' ? (
+            <motion.div
+              key="cobrancas"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+            >
+              <CobrancasTab onMovementCreated={refresh} />
+            </motion.div>
           ) : activeTab === 'projection' ? (
             <motion.div
               key="projection"
@@ -508,6 +518,17 @@ export default function MetricsPage() {
             }`}
           >
             Métricas
+          </button>
+
+          <button
+            onClick={() => setActiveTab('cobrancas')}
+            className={`px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.15em] transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'cobrancas' 
+                ? 'bg-silver-brushed text-velvet-deep shadow-lg scale-[1.02]' 
+                : 'text-silver-brushed/50 hover:text-silver-polished hover:bg-white/5'
+            }`}
+          >
+            Cobranças
           </button>
 
           <button

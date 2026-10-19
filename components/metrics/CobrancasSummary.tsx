@@ -9,9 +9,10 @@ import { ptBR } from 'date-fns/locale'
 
 interface CobrancasSummaryProps {
   movements: FinancialMovement[]
+  onOpenCobrancas?: () => void
 }
 
-export function CobrancasSummary({ movements }: CobrancasSummaryProps) {
+export function CobrancasSummary({ movements, onOpenCobrancas }: CobrancasSummaryProps) {
   const cobrancas = movements.filter(m => m.type === 'cobranca')
   
   const metrics = cobrancas.reduce((acc, curr) => {

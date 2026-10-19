@@ -573,5 +573,78 @@ CREATE INDEX IF NOT EXISTS idx_charge_occurrences_charge ON public.charge_occurr
 CREATE INDEX IF NOT EXISTS idx_charge_occurrences_month ON public.charge_occurrences(user_id, reference_month);
 CREATE INDEX IF NOT EXISTS idx_charge_occurrences_due ON public.charge_occurrences(user_id, due_date);
 
+-- 12. Cobranças & Controle de Dívidas Pessoais (Personal Debts & Receivables)
+
+CREATE TABLE IF NOT EXISTS public.debt_persons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    phone TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.debt_persons ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own debt persons" ON public.debt_persons;
+CREATE POLICY "Users manage their own debt persons"
+ON public.debt_persons FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_debt_persons_user_id ON public.debt_persons(user_id);
+CREATE INDEX IF NOT EXISTS idx_debt_persons_name ON public.debt_persons(user_id, name);
+
+CREATE TABLE IF NOT EXISTS public.debts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    person_id UUID NOT NULL REFERENCES public.debt_persons(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('to_receive', 'to_pay')),
+    description TEXT NOT NULL,
+    amount NUMERIC(15, 2) NOT NULL CHECK (amount > 0),
+    due_date DATE,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'partially_paid', 'paid')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.debts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own debts" ON public.debts;
+CREATE POLICY "Users manage their own debts"
+ON public.debts FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_debts_user_id ON public.debts(user_id);
+CREATE INDEX IF NOT EXISTS idx_debts_person_id ON public.debts(user_id, person_id);
+CREATE INDEX IF NOT EXISTS idx_debts_status ON public.debts(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_debts_due_date ON public.debts(user_id, due_date);
+
+CREATE TABLE IF NOT EXISTS public.debt_payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    debt_id UUID NOT NULL REFERENCES public.debts(id) ON DELETE CASCADE,
+    amount NUMERIC(15, 2) NOT NULL CHECK (amount > 0),
+    payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    notes TEXT,
+    financial_movement_id UUID REFERENCES public.financial_movements(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.debt_payments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage their own debt payments" ON public.debt_payments;
+CREATE POLICY "Users manage their own debt payments"
+ON public.debt_payments FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_debt_payments_user_id ON public.debt_payments(user_id);
+CREATE INDEX IF NOT EXISTS idx_debt_payments_debt_id ON public.debt_payments(debt_id);
+
+
 
 

@@ -26,7 +26,7 @@ const ACTION_OPTIONS: ActionOption[] = [
 
 export interface FloatingActionButtonProps {
   onRefresh: () => void
-  activeTab: 'metrics' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'
+  activeTab: 'metrics' | 'cobrancas' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'
   onAddStructuralExpense?: () => void
   isInline?: boolean
   externalOpenTrigger?: number

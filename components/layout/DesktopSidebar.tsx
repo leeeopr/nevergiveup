@@ -17,12 +17,13 @@ import {
   Moon,
   Activity,
   Building2,
-  Settings
+  Settings,
+  Users
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 
-export type NavigationTab = 'metrics' | 'projection' | 'structural' | 'progression' | 'movements' | 'calendar' | 'empresa'
+export type NavigationTab = 'metrics' | 'cobrancas' | 'projection' | 'structural' | 'progression' | 'movements' | 'calendar' | 'empresa'
 
 interface DesktopSidebarProps {
   activeTab: NavigationTab
@@ -36,6 +37,7 @@ export function DesktopSidebar({ activeTab, onTabChange, onNewMovementClick }: D
 
   const navItems: { id: NavigationTab; label: string; icon: React.ComponentType<any>; badge?: string }[] = [
     { id: 'metrics', label: 'Painel Geral', icon: LayoutDashboard },
+    { id: 'cobrancas', label: 'Cobranças & Dívidas', icon: Users },
     { id: 'projection', label: 'Projeção Financeira', icon: TrendingUp },
     { id: 'structural', label: 'Custos Fixos', icon: Layers },
     { id: 'progression', label: 'Extrato Diário', icon: Activity },
