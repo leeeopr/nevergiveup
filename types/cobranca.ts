@@ -4,6 +4,7 @@ export interface ChargeOccurrence {
   id: string
   charge_id: string
   user_id: string
+  group_id?: string | null
   reference_month: string // YYYY-MM
   due_date: string // YYYY-MM-DD
   amount: number
@@ -28,6 +29,7 @@ export interface ChargeOccurrence {
 export interface Charge {
   id: string
   user_id: string
+  group_id?: string | null
   client_id?: string | null
   client_name: string
   description: string

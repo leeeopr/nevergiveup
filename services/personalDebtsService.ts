@@ -150,36 +150,57 @@ function ensureLocalSeed() {
 }
 
 export const personalDebtsService = {
-  async getPersons(): Promise<DebtPerson[]> {
+  async getPersons(groupId?: string): Promise<DebtPerson[]> {
     if (isLocalFallbackActive()) {
       ensureLocalSeed()
-      return getStoredPersons().sort((a, b) => a.name.localeCompare(b.name))
+      return getStoredPersons()
+        .filter(p => {
+          if (!groupId) return true
+          return p.group_id === groupId || (!p.group_id && groupId === 'group-pessoal-default')
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
     }
     const supabase = getSupabase()
     const userId = await getUserId()
-    const { data, error } = await supabase
+    let query = supabase
       .from('debt_persons')
       .select('*')
-      .eq('user_id', userId)
       .order('name', { ascending: true })
+
+    if (groupId) {
+      query = query.eq('group_id', groupId)
+    } else {
+      query = query.eq('user_id', userId)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.warn('Erro ao carregar pessoas do Supabase, recorrendo ao cache local:', error)
       ensureLocalSeed()
-      return getStoredPersons().sort((a, b) => a.name.localeCompare(b.name))
+      return getStoredPersons()
+        .filter(p => {
+          if (!groupId) return true
+          return p.group_id === groupId || (!p.group_id && groupId === 'group-pessoal-default')
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
     }
     return data || []
   },
 
-  async getPersonsWithDebts(): Promise<PersonWithDebts[]> {
+  async getPersonsWithDebts(groupId?: string): Promise<PersonWithDebts[]> {
     const todayStr = format(new Date(), 'yyyy-MM-dd')
 
     if (isLocalFallbackActive()) {
       ensureLocalSeed()
-      const persons = getStoredPersons()
+      const allPersons = getStoredPersons()
+      const persons = allPersons.filter(p => {
+        if (!groupId) return true
+        return p.group_id === groupId || (!p.group_id && groupId === 'group-pessoal-default')
+      })
       const debts = getStoredDebts()
       const payments = getStoredPayments()
-      const allMovements = await financialService.getAllMovements()
+      const allMovements = await financialService.getAllMovements(groupId)
       const cobrancaMovements = allMovements.filter(m => m.type === 'cobranca')
 
       return persons.map(person => {
@@ -253,11 +274,28 @@ export const personalDebtsService = {
     const userId = await getUserId()
 
     try {
+      let personsQuery = supabase.from('debt_persons').select('*').order('name', { ascending: true })
+      let debtsQuery = supabase.from('debts').select('*')
+      let paymentsQuery = supabase.from('debt_payments').select('*')
+      let movementsQuery = supabase.from('financial_movements').select('*').eq('type', 'cobranca')
+
+      if (groupId) {
+        personsQuery = personsQuery.eq('group_id', groupId)
+        debtsQuery = debtsQuery.eq('group_id', groupId)
+        paymentsQuery = paymentsQuery.eq('group_id', groupId)
+        movementsQuery = movementsQuery.eq('group_id', groupId)
+      } else {
+        personsQuery = personsQuery.eq('user_id', userId)
+        debtsQuery = debtsQuery.eq('user_id', userId)
+        paymentsQuery = paymentsQuery.eq('user_id', userId)
+        movementsQuery = movementsQuery.eq('user_id', userId)
+      }
+
       const [personsRes, debtsRes, paymentsRes, movementsRes] = await Promise.all([
-        supabase.from('debt_persons').select('*').eq('user_id', userId).order('name', { ascending: true }),
-        supabase.from('debts').select('*').eq('user_id', userId),
-        supabase.from('debt_payments').select('*').eq('user_id', userId),
-        supabase.from('financial_movements').select('*').eq('user_id', userId).eq('type', 'cobranca')
+        personsQuery,
+        debtsQuery,
+        paymentsQuery,
+        movementsQuery
       ])
 
       if (personsRes.error) throw personsRes.error
@@ -340,15 +378,20 @@ export const personalDebtsService = {
     }
   },
 
-  async createPerson(payload: { name: string; phone?: string; notes?: string }): Promise<DebtPerson> {
+  async createPerson(
+    payload: { name: string; phone?: string; notes?: string; group_id?: string | null },
+    groupId?: string
+  ): Promise<DebtPerson> {
     const trimmedName = payload.name.trim()
     if (!trimmedName) throw new Error('O nome completo da pessoa é obrigatório.')
+    const finalGroupId = payload.group_id || groupId || null
 
     if (isLocalFallbackActive()) {
       const persons = getStoredPersons()
       const newPerson: DebtPerson = {
         id: generateId(),
         user_id: 'local-user-id',
+        group_id: finalGroupId,
         name: trimmedName,
         phone: payload.phone?.trim() || null,
         notes: payload.notes?.trim() || null,
@@ -367,6 +410,7 @@ export const personalDebtsService = {
       .from('debt_persons')
       .insert({
         user_id: userId,
+        group_id: finalGroupId,
         name: trimmedName,
         phone: payload.phone?.trim() || null,
         notes: payload.notes?.trim() || null
@@ -486,23 +530,29 @@ export const personalDebtsService = {
     }
   },
 
-  async createDebt(payload: {
-    person_id: string
-    type: DebtDirection
-    description: string
-    amount: number
-    due_date?: string | null
-    notes?: string | null
-  }): Promise<Debt> {
+  async createDebt(
+    payload: {
+      person_id: string
+      type: DebtDirection
+      description: string
+      amount: number
+      due_date?: string | null
+      notes?: string | null
+      group_id?: string | null
+    },
+    groupId?: string
+  ): Promise<Debt> {
     const trimmedDesc = payload.description.trim()
     if (!trimmedDesc) throw new Error('A descrição da dívida é obrigatória.')
     if (payload.amount <= 0) throw new Error('O valor da obrigação deve ser maior que zero.')
+    const finalGroupId = payload.group_id || groupId || null
 
     if (isLocalFallbackActive()) {
       const debts = getStoredDebts()
       const newDebt: Debt = {
         id: generateId(),
         user_id: 'local-user-id',
+        group_id: finalGroupId,
         person_id: payload.person_id,
         type: payload.type,
         description: trimmedDesc,
@@ -528,6 +578,7 @@ export const personalDebtsService = {
       .from('debts')
       .insert({
         user_id: userId,
+        group_id: finalGroupId,
         person_id: payload.person_id,
         type: payload.type,
         description: trimmedDesc,
@@ -670,19 +721,24 @@ export const personalDebtsService = {
     }
   },
 
-  async registerPayment(payload: {
-    debt_id: string
-    person_name: string
-    debt_description: string
-    debt_type: DebtDirection
-    amount: number
-    payment_date: string
-    notes?: string
-    syncFinancialMovement: boolean
-  }): Promise<DebtPayment> {
+  async registerPayment(
+    payload: {
+      debt_id: string
+      person_name: string
+      debt_description: string
+      debt_type: DebtDirection
+      amount: number
+      payment_date: string
+      notes?: string
+      syncFinancialMovement: boolean
+      group_id?: string | null
+    },
+    groupId?: string
+  ): Promise<DebtPayment> {
     if (payload.amount <= 0) {
       throw new Error('O valor do pagamento deve ser maior que zero.')
     }
+    const finalGroupId = payload.group_id || groupId || null
 
     let linkedMovementId: string | null = null
 
@@ -698,8 +754,9 @@ export const personalDebtsService = {
             ? `Cobrança Recebida: ${payload.person_name} (${payload.debt_description})`
             : `Dívida Paga: ${payload.person_name} (${payload.debt_description})`,
           tag: isReceiving ? 'Cobrança' : 'Dívida',
-          is_recurring: false
-        })
+          is_recurring: false,
+          group_id: finalGroupId
+        }, finalGroupId || undefined)
         linkedMovementId = newMovement.id
       } catch (err: any) {
         console.warn('Não foi possível gerar movimentação financeira automática:', err)
@@ -724,6 +781,7 @@ export const personalDebtsService = {
       const newPayment: DebtPayment = {
         id: generateId(),
         user_id: 'local-user-id',
+        group_id: finalGroupId,
         debt_id: payload.debt_id,
         amount: Number(payload.amount),
         payment_date: payload.payment_date,
@@ -749,8 +807,10 @@ export const personalDebtsService = {
     const userId = await getUserId()
 
     // Check debt remaining amount in Supabase
-    const { data: debt, error: debtErr } = await supabase.from('debts').select('amount').eq('id', payload.debt_id).single()
+    const { data: debt, error: debtErr } = await supabase.from('debts').select('amount, group_id').eq('id', payload.debt_id).single()
     if (debtErr || !debt) throw new Error('Dívida não encontrada no banco.')
+
+    const paymentGroupId = finalGroupId || debt.group_id || null
 
     const { data: existingPayments } = await supabase.from('debt_payments').select('amount').eq('debt_id', payload.debt_id)
     const currentPaid = (existingPayments || []).reduce((acc, p) => acc + Number(p.amount), 0)
@@ -764,6 +824,7 @@ export const personalDebtsService = {
       .from('debt_payments')
       .insert({
         user_id: userId,
+        group_id: paymentGroupId,
         debt_id: payload.debt_id,
         amount: Number(payload.amount),
         payment_date: payload.payment_date,

@@ -2,6 +2,7 @@ import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
 import { FinancialMovement } from '@/types/financial'
 import { RecurrenceEngine } from '@/services/RecurrenceEngine'
 import { startOfMonth, endOfMonth, addMonths } from 'date-fns'
+import { getClosestGoogleCalendarColorId } from '@/types/group'
 
 export type GoogleCalendarConnectionStatus = 
   | 'CONNECTED'
@@ -106,7 +107,9 @@ export function getBaseMovementId(movement: FinancialMovement): string {
 export function formatMovementToCalendarEvent(
   movement: FinancialMovement,
   reminderMinutes: number = 1440,
-  userId: string = 'local-user-id'
+  userId: string = 'local-user-id',
+  groupName?: string,
+  groupColor?: string
 ) {
   const isPaid = !!movement.is_paid
   let title = ''
@@ -155,6 +158,7 @@ export function formatMovementToCalendarEvent(
 
   const descriptionLines = [
     `📊 COMPROMISSO FINANCEIRO`,
+    groupName ? `🏢 Ambiente / Grupo: ${groupName}` : null,
     `----------------------------------------`,
     `• Valor: ${formattedAmount}`,
     `• Categoria: ${movement.tag || 'Geral'}`,
@@ -165,13 +169,18 @@ export function formatMovementToCalendarEvent(
     movement.installments ? `• Parcelas: ${movement.installments}` : null,
     `----------------------------------------`,
     `ID no Sistema: ${baseId}`,
+    movement.group_id ? `ID do Grupo: ${movement.group_id}` : null,
     `Chave de Ocorrência: ${occurrenceKey}`,
-    `Sincronizado automaticamente via Sistema Financeiro.`
+    `Sincronizado automaticamente via Financeira Pro.`
   ].filter(Boolean).join('\n')
 
+  const summary = groupName ? `[${groupName}] ${title}` : title
+  const calendarColorId = groupColor ? getClosestGoogleCalendarColorId(groupColor) : undefined
+
   return {
-    summary: title,
+    summary,
     description: descriptionLines,
+    colorId: calendarColorId,
     start: {
       date: dateStr
     },
@@ -182,6 +191,7 @@ export function formatMovementToCalendarEvent(
       private: {
         financeira_app: 'true',
         user_id: userId,
+        group_id: movement.group_id || '',
         occurrence_key: occurrenceKey,
         base_movement_id: baseId,
         occurrence_date: dateStr
@@ -454,10 +464,12 @@ export const googleCalendarService = {
       return items.map((item: any) => {
         const occurrenceKey = item.extendedProperties?.private?.occurrence_key
         const baseId = item.extendedProperties?.private?.base_movement_id
+        const groupId = item.extendedProperties?.private?.group_id
         return {
           id: item.id,
           occurrenceKey,
           baseId,
+          groupId,
           summary: item.summary,
           description: item.description,
           startDate: item.start?.date || item.start?.dateTime?.substring(0, 10)
@@ -699,7 +711,10 @@ export const googleCalendarService = {
   async syncAllMovements(
     userId: string,
     baseMovements: FinancialMovement[],
-    horizonMonths: number = 12
+    horizonMonths: number = 12,
+    groupId?: string,
+    groupName?: string,
+    groupColor?: string
   ): Promise<GoogleCalendarSyncResult> {
     const { accessToken, conn } = await this.ensureValidAccessToken(userId)
     if (!conn || !accessToken) {
@@ -725,11 +740,16 @@ export const googleCalendarService = {
       mapByOccurrenceKey.set(m.financial_movement_id, m)
     }
 
-    // 2. Virtually expand baseMovements into projected occurrences across 12-month horizon
+    // 2. Filter movements by active group if specified to enforce tenant isolation
+    const targetMovements = groupId
+      ? baseMovements.filter(m => m.group_id === groupId || (!m.group_id && groupId === 'group-pessoal-default'))
+      : baseMovements
+
+    // Virtually expand baseMovements into projected occurrences across horizon
     const now = new Date()
     const startDate = startOfMonth(now)
     const endDate = endOfMonth(addMonths(now, horizonMonths))
-    const projectedOccurrences = RecurrenceEngine.expandMovements(baseMovements, startDate, endDate)
+    const projectedOccurrences = RecurrenceEngine.expandMovements(targetMovements, startDate, endDate)
 
     let createdCount = 0
     let updatedCount = 0
@@ -744,7 +764,7 @@ export const googleCalendarService = {
       const occurrenceKey = getOccurrenceKey(occ)
       activeOccurrenceKeys.add(occurrenceKey)
 
-      const payload = formatMovementToCalendarEvent(occ, reminderMinutes, userId)
+      const payload = formatMovementToCalendarEvent(occ, reminderMinutes, userId, groupName, groupColor)
       const remoteEvent = remoteEventMap.get(occurrenceKey)
       const storedMap = mapByOccurrenceKey.get(occurrenceKey)
       const googleEventId = remoteEvent?.id || storedMap?.google_calendar_event_id
@@ -832,9 +852,14 @@ export const googleCalendarService = {
       }
     }
 
-    // 4. Remove obsolete remote events created by Financeira Pro that are no longer projected
+    // 4. Remove obsolete remote events created by Financeira Pro in THIS group that are no longer projected
     for (const remoteItem of remoteEvents) {
       if (remoteItem.occurrenceKey && !activeOccurrenceKeys.has(remoteItem.occurrenceKey)) {
+        // Guard against deleting events belonging to another group
+        if (groupId && remoteItem.groupId && remoteItem.groupId !== groupId) {
+          continue
+        }
+
         try {
           const deleteUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(remoteItem.id)}`
           let res = await fetch(deleteUrl, {

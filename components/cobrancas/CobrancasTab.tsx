@@ -13,6 +13,7 @@ import { PersonDetailModal } from './PersonDetailModal'
 import { MovementForm } from '@/components/metrics/MovementForm'
 import { EditMovementSheet } from '@/components/metrics/EditMovementSheet'
 import { DialogShell } from '@/components/ui/DialogShell'
+import { useGroup } from '@/context/GroupContext'
 import { 
   Users, 
   PlusCircle, 
@@ -36,6 +37,7 @@ interface CobrancasTabProps {
 }
 
 export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
+  const { currentGroup } = useGroup()
   const [persons, setPersons] = useState<PersonWithDebts[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -70,7 +72,7 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     setLoading(true)
     setError(null)
     try {
-      const data = await personalDebtsService.getPersonsWithDebts()
+      const data = await personalDebtsService.getPersonsWithDebts(currentGroup?.id)
       setPersons(data)
 
       // Refresh currently selected person if open in details
@@ -85,11 +87,11 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [selectedPerson])
+  }, [selectedPerson, currentGroup?.id])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData, currentGroup?.id])
 
   // Calculate Global Metrics
   const metrics: GlobalDebtsMetrics = useMemo(() => {
@@ -127,7 +129,10 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     if (editingPerson) {
       await personalDebtsService.updatePerson(editingPerson.id, payload)
     } else {
-      await personalDebtsService.createPerson(payload)
+      await personalDebtsService.createPerson({
+        ...payload,
+        group_id: currentGroup?.id || null
+      }, currentGroup?.id)
     }
     await loadData()
   }
@@ -176,7 +181,10 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     if (editingDebt) {
       await personalDebtsService.updateDebt(editingDebt.id, payload)
     } else {
-      await personalDebtsService.createDebt(payload)
+      await personalDebtsService.createDebt({
+        ...payload,
+        group_id: currentGroup?.id || null
+      }, currentGroup?.id)
     }
     await loadData()
   }
@@ -205,7 +213,10 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     notes?: string
     syncFinancialMovement: boolean
   }) => {
-    await personalDebtsService.registerPayment(payload)
+    await personalDebtsService.registerPayment({
+      ...payload,
+      group_id: currentGroup?.id || null
+    })
     await loadData()
     if (payload.syncFinancialMovement && onMovementCreated) {
       onMovementCreated()
@@ -230,13 +241,13 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
       ...mov,
       is_paid: nextPaid,
       paid_at: nextPaid ? new Date().toISOString() : undefined
-    })
+    }, currentGroup?.id)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }
 
   const handleDeleteMovement = async (movementId: string) => {
-    await financialService.deleteMovement(movementId)
+    await financialService.deleteMovement(movementId, currentGroup?.id)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }

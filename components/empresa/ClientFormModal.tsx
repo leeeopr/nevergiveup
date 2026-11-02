@@ -5,6 +5,7 @@ import { DialogShell } from '@/components/ui/DialogShell'
 import { Client } from '@/types/company'
 import { companyService } from '@/services/companyService'
 import { useAuth } from '@/context/AuthContext'
+import { useGroup } from '@/context/GroupContext'
 import { User, Building, Mail, Phone, MapPin, FileText, Check, X, Loader2 } from 'lucide-react'
 
 interface ClientFormModalProps {
@@ -16,6 +17,7 @@ interface ClientFormModalProps {
 
 export function ClientFormModal({ isOpen, onClose, clientToEdit, onSaved }: ClientFormModalProps) {
   const { user } = useAuth()
+  const { currentGroup } = useGroup()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,7 +91,10 @@ export function ClientFormModal({ isOpen, onClose, clientToEdit, onSaved }: Clie
       if (clientToEdit) {
         await companyService.updateClient(user.id, clientToEdit.id, formData)
       } else {
-        await companyService.createClient(user.id, formData)
+        await companyService.createClient(user.id, {
+          ...formData,
+          group_id: currentGroup?.id || null
+        }, currentGroup?.id)
       }
       onSaved()
       onClose()

@@ -57,8 +57,11 @@ async function getUserId(): Promise<string> {
   return session.user.id
 }
 
-function getLocalChargesWithOccurrences(): Charge[] {
-  const charges = getLocalCharges()
+function getLocalChargesWithOccurrences(groupId?: string): Charge[] {
+  const charges = getLocalCharges().filter(c => {
+    if (!groupId) return true
+    return c.group_id === groupId || (!c.group_id && groupId === 'group-pessoal-default')
+  })
   const occurrences = getLocalOccurrences()
 
   return charges.map(c => {
@@ -75,14 +78,21 @@ function getLocalChargesWithOccurrences(): Charge[] {
   })
 }
 
-function getLocalOccurrencesByRange(startDate: string, endDate: string): ChargeOccurrence[] {
-  const charges = getLocalCharges()
+function getLocalOccurrencesByRange(startDate: string, endDate: string, groupId?: string): ChargeOccurrence[] {
+  const charges = getLocalCharges().filter(c => {
+    if (!groupId) return true
+    return c.group_id === groupId || (!c.group_id && groupId === 'group-pessoal-default')
+  })
   const occurrences = getLocalOccurrences()
   const chargeMap = new Map<string, Charge>()
   charges.forEach(c => chargeMap.set(c.id, c))
 
   return occurrences
-    .filter(o => o.due_date >= startDate && o.due_date <= endDate)
+    .filter(o => {
+      const matchDate = o.due_date >= startDate && o.due_date <= endDate
+      if (!matchDate) return false
+      return chargeMap.has(o.charge_id)
+    })
     .map(o => {
       const c = chargeMap.get(o.charge_id)
       return {
@@ -104,7 +114,9 @@ function createLocalCharge(payload: {
   end_date: string
   billing_day: number
   notes?: string | null
-}): Charge {
+  group_id?: string | null
+}, groupId?: string): Charge {
+  const finalGroupId = payload.group_id || groupId || null
   const expectedOccs = generateExpectedOccurrences(
     payload.start_date,
     payload.end_date,
@@ -118,6 +130,7 @@ function createLocalCharge(payload: {
   const newCharge: Charge = {
     id: chargeId,
     user_id: userId,
+    group_id: finalGroupId,
     client_id: payload.client_id || null,
     client_name: payload.client_name,
     description: payload.description,
@@ -134,6 +147,7 @@ function createLocalCharge(payload: {
     id: generateMockId(),
     charge_id: chargeId,
     user_id: userId,
+    group_id: finalGroupId,
     reference_month: exp.reference_month,
     due_date: exp.due_date,
     amount: exp.amount,
@@ -303,40 +317,54 @@ export const cobrancasService = {
   /**
    * Fetches all charges for the user along with their occurrences.
    */
-  async getCharges(): Promise<Charge[]> {
+  async getCharges(groupId?: string): Promise<Charge[]> {
     if (isLocalFallbackActive()) {
-      return getLocalChargesWithOccurrences()
+      return getLocalChargesWithOccurrences(groupId)
     }
 
     try {
       const supabase = getSupabase()
       const userId = await getUserId()
 
-      const { data: charges, error: chargesErr } = await supabase
+      let chargesQuery = supabase
         .from('charges')
         .select('*')
-        .eq('user_id', userId)
         .order('created_at', { ascending: false })
+
+      if (groupId) {
+        chargesQuery = chargesQuery.eq('group_id', groupId)
+      } else {
+        chargesQuery = chargesQuery.eq('user_id', userId)
+      }
+
+      const { data: charges, error: chargesErr } = await chargesQuery
 
       if (chargesErr) {
         console.warn('Error fetching charges from Supabase, using local fallback:', chargesErr.message)
-        return getLocalChargesWithOccurrences()
+        return getLocalChargesWithOccurrences(groupId)
       }
 
       if (!charges || charges.length === 0) return []
 
       const chargeIds = charges.map(c => c.id)
 
-      const { data: occurrences, error: occErr } = await supabase
+      let occQuery = supabase
         .from('charge_occurrences')
         .select('*')
-        .eq('user_id', userId)
         .in('charge_id', chargeIds)
         .order('due_date', { ascending: true })
 
+      if (groupId) {
+        occQuery = occQuery.eq('group_id', groupId)
+      } else {
+        occQuery = occQuery.eq('user_id', userId)
+      }
+
+      const { data: occurrences, error: occErr } = await occQuery
+
       if (occErr) {
         console.warn('Error fetching charge occurrences from Supabase, using local fallback:', occErr.message)
-        return getLocalChargesWithOccurrences()
+        return getLocalChargesWithOccurrences(groupId)
       }
 
       const occMap = new Map<string, ChargeOccurrence[]>()
@@ -358,7 +386,7 @@ export const cobrancasService = {
       })
     } catch (err) {
       console.warn('Supabase getCharges failed, falling back to local storage:', err)
-      return getLocalChargesWithOccurrences()
+      return getLocalChargesWithOccurrences(groupId)
     }
   },
 
@@ -374,9 +402,12 @@ export const cobrancasService = {
     end_date: string
     billing_day: number
     notes?: string | null
-  }): Promise<Charge> {
+    group_id?: string | null
+  }, groupId?: string): Promise<Charge> {
+    const finalGroupId = payload.group_id || groupId || null
+
     if (isLocalFallbackActive()) {
-      return createLocalCharge(payload)
+      return createLocalCharge({ ...payload, group_id: finalGroupId }, finalGroupId || undefined)
     }
 
     try {
@@ -394,6 +425,7 @@ export const cobrancasService = {
         .from('charges')
         .insert({
           user_id: userId,
+          group_id: finalGroupId,
           client_id: payload.client_id || null,
           client_name: payload.client_name,
           description: payload.description,
@@ -408,12 +440,13 @@ export const cobrancasService = {
 
       if (chargeErr || !charge) {
         console.warn('Supabase createCharge failed, using local fallback:', chargeErr?.message)
-        return createLocalCharge(payload)
+        return createLocalCharge({ ...payload, group_id: finalGroupId }, finalGroupId || undefined)
       }
 
       const occsToInsert = expectedOccs.map(exp => ({
         charge_id: charge.id,
         user_id: userId,
+        group_id: finalGroupId,
         reference_month: exp.reference_month,
         due_date: exp.due_date,
         amount: exp.amount,
@@ -1193,26 +1226,33 @@ export const cobrancasService = {
   /**
    * Gets occurrences within a specific date range (for projections and calendar).
    */
-  async getOccurrencesByRange(startDate: string, endDate: string): Promise<ChargeOccurrence[]> {
+  async getOccurrencesByRange(startDate: string, endDate: string, groupId?: string): Promise<ChargeOccurrence[]> {
     if (isLocalFallbackActive()) {
-      return getLocalOccurrencesByRange(startDate, endDate)
+      return getLocalOccurrencesByRange(startDate, endDate, groupId)
     }
 
     try {
       const supabase = getSupabase()
       const userId = await getUserId()
 
-      const { data, error } = await supabase
+      let occQuery = supabase
         .from('charge_occurrences')
         .select('*, charges(description, client_name, billing_day)')
-        .eq('user_id', userId)
         .gte('due_date', startDate)
         .lte('due_date', endDate)
         .order('due_date', { ascending: true })
 
+      if (groupId) {
+        occQuery = occQuery.eq('group_id', groupId)
+      } else {
+        occQuery = occQuery.eq('user_id', userId)
+      }
+
+      const { data, error } = await occQuery
+
       if (error) {
         console.warn('Error fetching occurrences by range from Supabase, using local fallback:', error.message)
-        return getLocalOccurrencesByRange(startDate, endDate)
+        return getLocalOccurrencesByRange(startDate, endDate, groupId)
       }
 
       return (data || []).map(o => ({
@@ -1223,15 +1263,15 @@ export const cobrancasService = {
       }))
     } catch (err) {
       console.warn('Supabase getOccurrencesByRange failed, using local fallback:', err)
-      return getLocalOccurrencesByRange(startDate, endDate)
+      return getLocalOccurrencesByRange(startDate, endDate, groupId)
     }
   },
 
   /**
    * Gets overall summary metrics for all charges and occurrences.
    */
-  async getSummaryMetrics(): Promise<ChargeSummaryMetrics> {
-    const charges = await this.getCharges()
+  async getSummaryMetrics(groupId?: string): Promise<ChargeSummaryMetrics> {
+    const charges = await this.getCharges(groupId)
     let totalOccurrences = 0
     let paidOccurrencesCount = 0
     let pendingOccurrencesCount = 0

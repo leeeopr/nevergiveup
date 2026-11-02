@@ -6,6 +6,7 @@ import { Client, Receipt, PaymentMethod } from '@/types/company'
 import { companyService } from '@/services/companyService'
 import { financialService } from '@/services/financialService'
 import { useAuth } from '@/context/AuthContext'
+import { useGroup } from '@/context/GroupContext'
 import { FileText, User, DollarSign, Calendar, CreditCard, Check, Loader2, ArrowRight } from 'lucide-react'
 
 interface ReceiptFormModalProps {
@@ -56,6 +57,7 @@ export function ReceiptFormModal({
   onSaved
 }: ReceiptFormModalProps) {
   const { user } = useAuth()
+  const { currentGroup } = useGroup()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedClientId, setSelectedClientId] = useState<string>('')
@@ -187,8 +189,9 @@ export function ReceiptFormModal({
             name: formData.client_name,
             document: formData.client_document || null,
             email: formData.client_email || null,
-            phone: formData.client_phone || null
-          })
+            phone: formData.client_phone || null,
+            group_id: currentGroup?.id || null
+          }, currentGroup?.id)
           if (newClient?.id) {
             finalClientId = newClient.id
           }
@@ -208,8 +211,9 @@ export function ReceiptFormModal({
             description: `Recibo: ${formData.description} (${formData.client_name})`,
             date: formData.issue_date || new Date().toISOString().split('T')[0],
             tag: 'Serviços',
-            is_recurring: false
-          })
+            is_recurring: false,
+            group_id: currentGroup?.id || null
+          }, currentGroup?.id)
           movementId = newMovement.id
         } catch (movErr) {
           console.warn('Could not auto-create financial movement:', movErr)
@@ -218,6 +222,7 @@ export function ReceiptFormModal({
 
       const receiptPayload: Partial<Receipt> = {
         ...formData,
+        group_id: currentGroup?.id || null,
         client_id: finalClientId,
         financial_movement_id: movementId || receiptToEdit?.financial_movement_id || null
       }
@@ -225,7 +230,7 @@ export function ReceiptFormModal({
       if (receiptToEdit) {
         await companyService.updateReceipt(user.id, receiptToEdit.id, receiptPayload)
       } else {
-        await companyService.createReceipt(user.id, receiptPayload)
+        await companyService.createReceipt(user.id, receiptPayload, currentGroup?.id)
       }
 
       onSaved()

@@ -38,25 +38,35 @@ function saveLocalReceipts(userId: string, receipts: Receipt[]): void {
 
 export const companyService = {
   // CLIENTS CRUD
-  async getClients(userId: string): Promise<Client[]> {
+  async getClients(userId: string, groupId?: string): Promise<Client[]> {
     if (!userId) return []
     const local = getLocalClients(userId)
 
     if (isLocalFallbackActive() || userId === 'local-user-id') {
-      return local
+      return local.filter(c => {
+        if (!groupId) return true
+        return c.group_id === groupId || (!c.group_id && groupId === 'group-pessoal-default')
+      })
     }
 
     try {
       const supabase = getSupabase()
-      const { data, error } = await supabase
+      let query = supabase
         .from('clients')
         .select('*')
-        .eq('user_id', userId)
         .order('name', { ascending: true })
+
+      if (groupId) {
+        query = query.eq('group_id', groupId)
+      } else {
+        query = query.eq('user_id', userId)
+      }
+
+      const { data, error } = await query
 
       if (error) {
         console.error('[CompanyService] Error fetching clients from Supabase:', error.message)
-        return local
+        return local.filter(c => !groupId || c.group_id === groupId)
       }
 
       const clients = (data || []) as Client[]
@@ -64,12 +74,13 @@ export const companyService = {
       return clients
     } catch (err) {
       console.error('[CompanyService] Exception fetching clients:', err)
-      return local
+      return local.filter(c => !groupId || c.group_id === groupId)
     }
   },
 
-  async createClient(userId: string, clientData: Partial<Client>): Promise<Client> {
+  async createClient(userId: string, clientData: Partial<Client>, groupId?: string): Promise<Client> {
     const isLocalUser = isLocalFallbackActive() || userId === 'local-user-id' || !userId
+    const finalGroupId = clientData.group_id || groupId || null
 
     // Only generate UUID if environment supports valid UUID v4
     const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
@@ -78,6 +89,7 @@ export const companyService = {
     const newClient: Client = {
       id: clientUuid || `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       user_id: userId,
+      group_id: finalGroupId,
       name: clientData.name?.trim() || 'Cliente sem nome',
       document: clientData.document?.trim() || null,
       email: clientData.email?.trim() || null,
@@ -112,6 +124,7 @@ export const companyService = {
 
       const insertPayload: Record<string, any> = {
         user_id: activeUserId,
+        group_id: finalGroupId,
         name: newClient.name,
         status: newClient.status
       }
@@ -269,25 +282,35 @@ export const companyService = {
   },
 
   // RECEIPTS CRUD
-  async getReceipts(userId: string): Promise<Receipt[]> {
+  async getReceipts(userId: string, groupId?: string): Promise<Receipt[]> {
     if (!userId) return []
     const local = getLocalReceipts(userId)
 
     if (isLocalFallbackActive() || userId === 'local-user-id') {
-      return local
+      return local.filter(r => {
+        if (!groupId) return true
+        return r.group_id === groupId || (!r.group_id && groupId === 'group-pessoal-default')
+      })
     }
 
     try {
       const supabase = getSupabase()
-      const { data, error } = await supabase
+      let query = supabase
         .from('receipts')
         .select('*')
-        .eq('user_id', userId)
         .order('issue_date', { ascending: false })
+
+      if (groupId) {
+        query = query.eq('group_id', groupId)
+      } else {
+        query = query.eq('user_id', userId)
+      }
+
+      const { data, error } = await query
 
       if (error) {
         console.error('[CompanyService] Error fetching receipts from Supabase:', error.message)
-        return local
+        return local.filter(r => !groupId || r.group_id === groupId)
       }
 
       const receipts = (data || []) as Receipt[]
@@ -295,12 +318,13 @@ export const companyService = {
       return receipts
     } catch (err) {
       console.error('[CompanyService] Exception fetching receipts:', err)
-      return local
+      return local.filter(r => !groupId || r.group_id === groupId)
     }
   },
 
-  async createReceipt(userId: string, receiptData: Partial<Receipt>): Promise<Receipt> {
+  async createReceipt(userId: string, receiptData: Partial<Receipt>, groupId?: string): Promise<Receipt> {
     const isLocalUser = isLocalFallbackActive() || userId === 'local-user-id' || !userId
+    const finalGroupId = receiptData.group_id || groupId || null
 
     const localReceipts = getLocalReceipts(userId)
     const count = localReceipts.length + 1
@@ -314,6 +338,7 @@ export const companyService = {
       id: receiptUuid || `receipt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       receipt_code: receiptData.receipt_code || autoCode,
       user_id: userId,
+      group_id: finalGroupId,
       client_id: (receiptData.client_id && isValidUuid(receiptData.client_id)) ? receiptData.client_id : null,
       client_name: receiptData.client_name?.trim() || 'Cliente sem nome',
       client_document: receiptData.client_document?.trim() || null,
@@ -348,6 +373,7 @@ export const companyService = {
       const insertPayload: Record<string, any> = {
         receipt_code: newReceipt.receipt_code,
         user_id: activeUserId,
+        group_id: finalGroupId,
         client_name: newReceipt.client_name,
         description: newReceipt.description,
         amount: newReceipt.amount,

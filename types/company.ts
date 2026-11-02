@@ -1,6 +1,7 @@
 export interface Client {
   id: string
   user_id: string
+  group_id?: string | null
   name: string
   document?: string | null
   email?: string | null
@@ -33,6 +34,7 @@ export interface Receipt {
   id: string
   receipt_code?: string | null
   user_id: string
+  group_id?: string | null
   client_id?: string | null
   client_name: string
   client_document?: string | null

@@ -25,14 +25,33 @@ import { AlertCircle, PlusCircle, Database, LogOut, Wifi, WifiOff, Lock, Activit
 import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
+import { useGroup } from '@/context/GroupContext'
 import { LoginPage } from '@/components/auth/LoginPage'
 import { DialogShell } from '@/components/ui/DialogShell'
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar'
 import { DesktopHeader } from '@/components/layout/DesktopHeader'
+import { GroupSelectionScreen } from '@/components/groups/GroupSelectionScreen'
+import { GroupModal } from '@/components/groups/GroupModal'
+import { GroupSwitcher } from '@/components/groups/GroupSwitcher'
+import { ManagementGroup } from '@/types/group'
 
 export default function MetricsPage() {
   const { user, profile, loading: authLoading, signOut, isDbConnected, isOffline, toggleEmpresaMode } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { currentGroup, isEntrySelectionActive } = useGroup()
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
+  const [groupToEdit, setGroupToEdit] = useState<ManagementGroup | null>(null)
+
+  const handleOpenCreateGroup = () => {
+    setGroupToEdit(null)
+    setIsGroupModalOpen(true)
+  }
+
+  const handleOpenEditGroup = () => {
+    setGroupToEdit(currentGroup)
+    setIsGroupModalOpen(true)
+  }
+
   const [currentDate, setCurrentDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState<'metrics' | 'cobrancas' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
@@ -178,15 +197,21 @@ export default function MetricsPage() {
     )
   }
 
-  const hasData = movements.length > 0
-
   return (
-    <div key={user ? user.id : 'anonymous'} className="min-h-screen lg:flex bg-[var(--bg)] text-[var(--text-main)] selection:bg-silver-brushed selection:text-velvet-deep">
+    <div key={user ? user.id : 'anonymous'} className="min-h-screen lg:flex bg-[var(--bg)] text-[var(--text-main)] selection:bg-silver-brushed selection:text-velvet-deep relative">
+      {/* Top Ambient Group Color Accent */}
+      <div 
+        className="fixed top-0 left-0 right-0 h-1 z-50 pointer-events-none transition-colors duration-500"
+        style={{ backgroundColor: currentGroup?.color || '#10b981' }}
+      />
+
       {/* Permanent Desktop Sidebar (Hidden on Mobile) */}
       <DesktopSidebar 
         activeTab={activeTab} 
         onTabChange={setActiveTab} 
-        onNewMovementClick={() => setExternalFabTrigger(prev => prev + 1)} 
+        onNewMovementClick={() => setExternalFabTrigger(prev => prev + 1)}
+        onOpenCreateGroup={handleOpenCreateGroup}
+        onOpenEditGroup={handleOpenEditGroup}
       />
 
       {/* Main Content Area */}
@@ -198,6 +223,8 @@ export default function MetricsPage() {
           onDateChange={setCurrentDate} 
           onRefresh={refresh}
           loading={loading}
+          onOpenCreateGroup={handleOpenCreateGroup}
+          onOpenEditGroup={handleOpenEditGroup}
         />
 
         {/* Mobile Top Status & Profile Bar (Hidden on Desktop) */}
@@ -222,6 +249,12 @@ export default function MetricsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {/* Mobile Group Switcher */}
+            <GroupSwitcher
+              onOpenCreateGroup={handleOpenCreateGroup}
+              onOpenEditGroup={handleOpenEditGroup}
+            />
+
             {/* DB Connection Health indicator */}
             <div className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider ${
               isDbConnected 
@@ -671,6 +704,18 @@ export default function MetricsPage() {
           </p>
         </div>
       </DialogShell>
+
+      {/* Interactive Entry Screen for Multiple Groups */}
+      {isEntrySelectionActive && (
+        <GroupSelectionScreen onOpenCreateGroup={handleOpenCreateGroup} />
+      )}
+
+      {/* Group Create & Edit Modal */}
+      <GroupModal
+        isOpen={isGroupModalOpen}
+        onClose={() => setIsGroupModalOpen(false)}
+        groupToEdit={groupToEdit}
+      />
     </div>
   )
 }

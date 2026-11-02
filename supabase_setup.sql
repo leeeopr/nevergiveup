@@ -677,9 +677,108 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DROP TRIGGER IF EXISTS trg_validate_movement_debt_person ON public.financial_movements;
 CREATE TRIGGER trg_validate_movement_debt_person
 BEFORE INSERT OR UPDATE OF debt_person_id, user_id ON public.financial_movements
-FOR EACH ROW EXECUTE FUNCTION public.validate_movement_debt_person_owner();
+-- 13. Management Groups Architecture (Multi-Tenant Environments)
+-- Support for multiple completely isolated environments (e.g. Pessoal, Chácara, Avós, Empresa)
+CREATE TABLE IF NOT EXISTS public.management_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    description TEXT,
+    color TEXT NOT NULL DEFAULT '#6366f1',
+    owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived', 'inactive')),
+    settings JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
+CREATE TABLE IF NOT EXISTS public.group_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID NOT NULL REFERENCES public.management_groups(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    role public.user_role NOT NULL DEFAULT 'editor',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(group_id, user_id)
+);
 
+CREATE OR REPLACE FUNCTION public.user_has_group_access(target_group_id UUID, minimum_role TEXT DEFAULT 'viewer')
+RETURNS BOOLEAN AS $$
+DECLARE
+    current_uid UUID := auth.uid();
+BEGIN
+    IF current_uid IS NULL THEN
+        RETURN FALSE;
+    END IF;
 
+    IF EXISTS (
+        SELECT 1 FROM public.management_groups 
+        WHERE id = target_group_id AND owner_id = current_uid
+    ) THEN
+        RETURN TRUE;
+    END IF;
 
+    IF minimum_role = 'viewer' THEN
+        RETURN EXISTS (
+            SELECT 1 FROM public.group_members 
+            WHERE group_id = target_group_id AND user_id = current_uid
+        );
+    ELSIF minimum_role = 'editor' THEN
+        RETURN EXISTS (
+            SELECT 1 FROM public.group_members 
+            WHERE group_id = target_group_id AND user_id = current_uid AND role IN ('admin', 'editor')
+        );
+    ELSIF minimum_role = 'admin' THEN
+        RETURN EXISTS (
+            SELECT 1 FROM public.group_members 
+            WHERE group_id = target_group_id AND user_id = current_uid AND role = 'admin'
+        );
+    END IF;
 
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Add group_id to all relevant tables
+ALTER TABLE public.financial_movements ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.structural_expenses ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.debt_persons ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.debt_payments ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.charges ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.charge_occurrences ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.google_calendar_events ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_mgmt_groups_owner ON public.management_groups(owner_id);
+CREATE INDEX IF NOT EXISTS idx_movements_group_id ON public.financial_movements(group_id);
+CREATE INDEX IF NOT EXISTS idx_structural_group_id ON public.structural_expenses(group_id);
+CREATE INDEX IF NOT EXISTS idx_debt_persons_group_id ON public.debt_persons(group_id);
+
+ALTER TABLE public.management_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.group_members ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view groups they belong to" ON public.management_groups;
+CREATE POLICY "Users can view groups they belong to" 
+ON public.management_groups FOR SELECT 
+USING (
+    owner_id = auth.uid() 
+    OR id IN (SELECT group_id FROM public.group_members WHERE user_id = auth.uid())
+);
+
+DROP POLICY IF EXISTS "Users can insert their own groups" ON public.management_groups;
+CREATE POLICY "Users can insert their own groups" 
+ON public.management_groups FOR INSERT 
+WITH CHECK (owner_id = auth.uid());
+
+DROP POLICY IF EXISTS "Owners and admins can update their groups" ON public.management_groups;
+CREATE POLICY "Owners and admins can update their groups" 
+ON public.management_groups FOR UPDATE 
+USING (
+    owner_id = auth.uid() 
+    OR id IN (SELECT group_id FROM public.group_members WHERE user_id = auth.uid() AND role = 'admin')
+);
+
+DROP POLICY IF EXISTS "Only owners can delete their groups" ON public.management_groups;
+CREATE POLICY "Only owners can delete their groups" 
+ON public.management_groups FOR DELETE 
+USING (owner_id = auth.uid());

@@ -19,6 +19,7 @@ export const metadata: Metadata = {
 
 import { AuthProvider } from '@/context/AuthContext'
 import { ThemeProvider } from '@/context/ThemeContext'
+import { GroupProvider } from '@/context/GroupContext'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased bg-velvet-deep text-silver-polished" suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
-            {children}
+            <GroupProvider>
+              {children}
+            </GroupProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

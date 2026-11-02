@@ -6,6 +6,7 @@ import { MovementType, FinancialMovement, RecurrenceType } from '@/types/financi
 import { financialService } from '@/services/financialService'
 import { personalDebtsService } from '@/services/personalDebtsService'
 import { DebtPerson } from '@/types/personalDebts'
+import { useGroup } from '@/context/GroupContext'
 import { 
   Calendar, 
   Tag, 
@@ -63,6 +64,7 @@ export function MovementForm({
   hideFooter = false,
   onLoadingChange
 }: MovementFormProps) {
+  const { currentGroup } = useGroup()
   const [loading, setLoading] = useState(false)
   const [persons, setPersons] = useState<DebtPerson[]>([])
   const [loadingPersons, setLoadingPersons] = useState(false)
@@ -128,7 +130,7 @@ export function MovementForm({
     if (type === 'cobranca') {
       let isMounted = true
       setLoadingPersons(true)
-      personalDebtsService.getPersons()
+      personalDebtsService.getPersons(currentGroup?.id)
         .then((data) => {
           if (isMounted) {
             setPersons(data)
@@ -153,7 +155,7 @@ export function MovementForm({
         })
       return () => { isMounted = false }
     }
-  }, [type, initialData, setValue])
+  }, [type, initialData, setValue, currentGroup?.id])
 
   const selectedPerson = useMemo(() => {
     if (!debtPersonId && !debtorName) return null
@@ -172,8 +174,9 @@ export function MovementForm({
     try {
       const created = await personalDebtsService.createPerson({
         name: newPersonName.trim(),
-        phone: newPersonPhone.trim() || undefined
-      })
+        phone: newPersonPhone.trim() || undefined,
+        group_id: currentGroup?.id || null
+      }, currentGroup?.id)
       setPersons(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setValue('debt_person_id', created.id, { shouldValidate: true })
       setValue('debtor_name', created.name, { shouldValidate: true })
@@ -212,6 +215,7 @@ export function MovementForm({
       }
 
       const payload: any = {
+        group_id: initialData?.group_id || currentGroup?.id || null,
         type,
         amount: Number(data.amount),
         description: data.description,
@@ -236,9 +240,9 @@ export function MovementForm({
       }
 
       if (id) {
-        await financialService.updateMovement(id, payload)
+        await financialService.updateMovement(id, payload, currentGroup?.id)
       } else {
-        await financialService.insertMovement(payload)
+        await financialService.insertMovement(payload, currentGroup?.id)
       }
       onSuccess()
     } catch (error: any) {

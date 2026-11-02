@@ -7,6 +7,7 @@ export type DebtStatus = 'pending' | 'partially_paid' | 'paid'
 export interface DebtPerson {
   id: string
   user_id: string
+  group_id?: string | null
   name: string
   phone?: string | null
   notes?: string | null
@@ -17,6 +18,7 @@ export interface DebtPerson {
 export interface DebtPayment {
   id: string
   user_id: string
+  group_id?: string | null
   debt_id: string
   amount: number
   payment_date: string // YYYY-MM-DD
@@ -28,6 +30,7 @@ export interface DebtPayment {
 export interface Debt {
   id: string
   user_id: string
+  group_id?: string | null
   person_id: string
   type: DebtDirection
   description: string

@@ -11,10 +11,12 @@ import { ReceiptFormModal } from './ReceiptFormModal'
 import { ReceiptPrintModal } from './ReceiptPrintModal'
 import { CompanySettingsCard } from './CompanySettingsCard'
 import { CobrancasManager } from './CobrancasManager'
+import { useGroup } from '@/context/GroupContext'
 import { Building, Users, FileText, Settings, Plus, Sparkles, ShieldCheck, ToggleRight, DollarSign } from 'lucide-react'
 
 export function EmpresaTab() {
   const { user, profile, toggleEmpresaMode } = useAuth()
+  const { currentGroup } = useGroup()
   const [subTab, setSubTab] = useState<'clients' | 'cobrancas' | 'receipts' | 'settings'>('clients')
 
 
@@ -42,8 +44,8 @@ export function EmpresaTab() {
     setLoading(true)
     try {
       const [fetchedClients, fetchedReceipts] = await Promise.all([
-        companyService.getClients(user.id),
-        companyService.getReceipts(user.id)
+        companyService.getClients(user.id, currentGroup?.id),
+        companyService.getReceipts(user.id, currentGroup?.id)
       ])
       setClients(fetchedClients)
       setReceipts(fetchedReceipts)
@@ -52,7 +54,7 @@ export function EmpresaTab() {
     } finally {
       setLoading(false)
     }
-  }, [user, profile?.empresa_enabled])
+  }, [user, profile?.empresa_enabled, currentGroup?.id])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

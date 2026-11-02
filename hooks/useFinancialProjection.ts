@@ -9,10 +9,12 @@ import { structuralExpensesService } from '@/services/structuralExpensesService'
 import { cobrancasService } from '@/services/cobrancasService'
 import { projectionService, ProjectionSummary } from '@/services/projectionService'
 import { useAuth } from '@/context/AuthContext'
+import { useGroup } from '@/context/GroupContext'
 import { format, addMonths, addYears, endOfYear, startOfDay, parseISO } from 'date-fns'
 
 export function useFinancialProjection() {
   const { user, loading: authLoading } = useAuth()
+  const { currentGroup } = useGroup()
   const [movements, setMovements] = useState<FinancialMovement[]>([])
   const [structuralExpenses, setStructuralExpenses] = useState<StructuralExpense[]>([])
   const [chargeOccurrences, setChargeOccurrences] = useState<ChargeOccurrence[]>([])
@@ -36,9 +38,9 @@ export function useFinancialProjection() {
     try {
       setLoading(true)
       const [moves, structs, occurrences] = await Promise.all([
-        financialService.getAllMovements(),
-        structuralExpensesService.getExpenses(),
-        cobrancasService.getOccurrencesByRange(startDateStr, endDateStr)
+        financialService.getAllMovements(currentGroup?.id),
+        structuralExpensesService.getExpenses(currentGroup?.id),
+        cobrancasService.getOccurrencesByRange(startDateStr, endDateStr, currentGroup?.id)
       ])
       setMovements(moves)
       setStructuralExpenses(structs)
@@ -50,7 +52,7 @@ export function useFinancialProjection() {
     } finally {
       setLoading(false)
     }
-  }, [user, startDateStr, endDateStr])
+  }, [user, currentGroup?.id, startDateStr, endDateStr])
 
   useEffect(() => {
     let isMounted = true
@@ -66,9 +68,9 @@ export function useFinancialProjection() {
 
       try {
         const [moves, structs, occurrences] = await Promise.all([
-          financialService.getAllMovements(),
-          structuralExpensesService.getExpenses(),
-          cobrancasService.getOccurrencesByRange(startDateStr, endDateStr)
+          financialService.getAllMovements(currentGroup?.id),
+          structuralExpensesService.getExpenses(currentGroup?.id),
+          cobrancasService.getOccurrencesByRange(startDateStr, endDateStr, currentGroup?.id)
         ])
         if (!isMounted) return
         setMovements(moves)
@@ -91,7 +93,7 @@ export function useFinancialProjection() {
     return () => {
       isMounted = false
     }
-  }, [authLoading, user, startDateStr, endDateStr])
+  }, [authLoading, user, currentGroup?.id, startDateStr, endDateStr])
 
   // Presets handlers
   const setPresetRange = useCallback((preset: '3m' | '6m' | '1y' | '2y' | 'end_of_year') => {
@@ -118,23 +120,24 @@ export function useFinancialProjection() {
   }, [])
 
   const projection = useMemo<ProjectionSummary>(() => {
-    const startObj = startDateStr ? parseISO(startDateStr) : new Date()
-    const endObj = endDateStr ? parseISO(endDateStr) : addMonths(startObj, 6)
-    
-    return projectionService.calculateProjection(movements, structuralExpenses, startObj, endObj, chargeOccurrences)
-  }, [movements, structuralExpenses, chargeOccurrences, startDateStr, endDateStr])
+    return projectionService.calculateProjection({
+      startDateStr,
+      endDateStr,
+      movements,
+      structuralExpenses,
+      chargeOccurrences
+    })
+  }, [startDateStr, endDateStr, movements, structuralExpenses, chargeOccurrences])
 
   return {
-    loading,
-    error,
-    movements,
-    structuralExpenses,
     startDateStr,
     endDateStr,
     setStartDateStr,
     setEndDateStr,
     setPresetRange,
     projection,
+    loading,
+    error,
     refreshData
   }
 }

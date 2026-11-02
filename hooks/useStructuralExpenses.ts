@@ -2,17 +2,19 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { structuralExpensesService } from '@/services/structuralExpensesService'
 import { StructuralExpense } from '@/types/structural'
 import { useAuth } from '@/context/AuthContext'
+import { useGroup } from '@/context/GroupContext'
 
 export function useStructuralExpenses() {
   const [expenses, setExpenses] = useState<StructuralExpense[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const { user, loading: authLoading } = useAuth()
+  const { currentGroup } = useGroup()
 
   const refresh = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await structuralExpensesService.getExpenses()
+      const data = await structuralExpensesService.getExpenses(currentGroup?.id)
       setExpenses(data)
       setError(null)
     } catch (err) {
@@ -20,7 +22,7 @@ export function useStructuralExpenses() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentGroup?.id])
 
   useEffect(() => {
     if (!authLoading) {
@@ -45,7 +47,10 @@ export function useStructuralExpenses() {
   }, [expenses])
 
   const addExpense = async (expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
-    const newItem = await structuralExpensesService.createExpense(expense)
+    const newItem = await structuralExpensesService.createExpense({
+      ...expense,
+      group_id: expense.group_id || currentGroup?.id || null
+    }, currentGroup?.id)
     setExpenses(prev => [newItem, ...prev])
     return newItem
   }

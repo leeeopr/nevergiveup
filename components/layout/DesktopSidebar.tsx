@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
+import { GroupSwitcher } from '@/components/groups/GroupSwitcher'
 
 export type NavigationTab = 'metrics' | 'cobrancas' | 'projection' | 'structural' | 'progression' | 'movements' | 'calendar' | 'empresa'
 
@@ -29,9 +30,17 @@ interface DesktopSidebarProps {
   activeTab: NavigationTab
   onTabChange: (tab: NavigationTab) => void
   onNewMovementClick: () => void
+  onOpenCreateGroup?: () => void
+  onOpenEditGroup?: () => void
 }
 
-export function DesktopSidebar({ activeTab, onTabChange, onNewMovementClick }: DesktopSidebarProps) {
+export function DesktopSidebar({ 
+  activeTab, 
+  onTabChange, 
+  onNewMovementClick,
+  onOpenCreateGroup,
+  onOpenEditGroup
+}: DesktopSidebarProps) {
   const { user, profile, signOut, isDbConnected, isOffline, toggleEmpresaMode } = useAuth()
   const { theme, toggleTheme } = useTheme()
 
@@ -72,6 +81,13 @@ export function DesktopSidebar({ activeTab, onTabChange, onNewMovementClick }: D
             </p>
           </div>
         </div>
+
+        {/* Group / Environment Switcher */}
+        <GroupSwitcher 
+          className="w-full"
+          onOpenCreateGroup={onOpenCreateGroup}
+          onOpenEditGroup={onOpenEditGroup}
+        />
 
         {/* Primary Action Button */}
         <button

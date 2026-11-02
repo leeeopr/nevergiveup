@@ -75,18 +75,30 @@ async function getUserId(): Promise<string> {
 }
 
 export const structuralExpensesService = {
-  async getExpenses(): Promise<StructuralExpense[]> {
+  async getExpenses(groupId?: string): Promise<StructuralExpense[]> {
     if (isLocalFallbackActive()) {
-      return getLocalExpenses().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+      return getLocalExpenses()
+        .filter(e => {
+          if (!groupId) return true
+          return e.group_id === groupId || (!e.group_id && groupId === 'group-pessoal-default')
+        })
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
     }
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const { data, error } = await supabase
+    let query = supabase
       .from('structural_expenses')
       .select('*')
-      .eq('user_id', userId)
       .order('created_at', { ascending: false })
+
+    if (groupId) {
+      query = query.eq('group_id', groupId)
+    } else {
+      query = query.eq('user_id', userId)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       throw new Error(`Erro de sincronização: Não foi possível carregar as despesas estruturais: ${error.message}`)
@@ -95,7 +107,12 @@ export const structuralExpensesService = {
     return data || []
   },
 
-  async createExpense(expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<StructuralExpense> {
+  async createExpense(
+    expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>,
+    groupId?: string
+  ): Promise<StructuralExpense> {
+    const finalGroupId = expense.group_id || groupId || null
+
     if (isLocalFallbackActive()) {
       const all = getLocalExpenses()
       const mockId = (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -105,6 +122,7 @@ export const structuralExpensesService = {
       const newExpense: StructuralExpense = {
         ...expense,
         id: mockId,
+        group_id: finalGroupId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         user_id: 'local-user-id',
@@ -127,6 +145,7 @@ export const structuralExpensesService = {
         recurrence: expense.recurrence,
         priority: expense.priority,
         description: expense.description,
+        group_id: finalGroupId,
         user_id: userId
       })
       .select()
@@ -139,7 +158,13 @@ export const structuralExpensesService = {
     return data
   },
 
-  async updateExpense(id: string, expense: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>): Promise<StructuralExpense> {
+  async updateExpense(
+    id: string,
+    expense: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>,
+    groupId?: string
+  ): Promise<StructuralExpense> {
+    const finalGroupId = expense.group_id || groupId
+
     if (isLocalFallbackActive()) {
       const all = getLocalExpenses()
       const idx = all.findIndex(e => e.id === id)
@@ -149,6 +174,7 @@ export const structuralExpensesService = {
       const updated: StructuralExpense = {
         ...all[idx],
         ...expense,
+        group_id: finalGroupId !== undefined ? finalGroupId : all[idx].group_id,
         amount: expense.amount !== undefined ? Number(expense.amount) : all[idx].amount,
         updated_at: new Date().toISOString()
       }
@@ -159,15 +185,24 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const { data, error } = await supabase
+
+    let updateQuery = supabase
       .from('structural_expenses')
       .update({
         ...expense,
+        group_id: finalGroupId,
         amount: expense.amount !== undefined ? Number(expense.amount) : undefined,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .eq('user_id', userId)
+
+    if (finalGroupId) {
+      updateQuery = updateQuery.eq('group_id', finalGroupId)
+    } else {
+      updateQuery = updateQuery.eq('user_id', userId)
+    }
+
+    const { data, error } = await updateQuery
       .select()
       .single()
 
@@ -178,7 +213,7 @@ export const structuralExpensesService = {
     return data
   },
 
-  async deleteExpense(id: string): Promise<void> {
+  async deleteExpense(id: string, groupId?: string): Promise<void> {
     if (isLocalFallbackActive()) {
       const all = getLocalExpenses()
       const filtered = all.filter(e => e.id !== id)
@@ -188,11 +223,19 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const { error } = await supabase
+
+    let deleteQuery = supabase
       .from('structural_expenses')
       .delete()
       .eq('id', id)
-      .eq('user_id', userId)
+
+    if (groupId) {
+      deleteQuery = deleteQuery.eq('group_id', groupId)
+    } else {
+      deleteQuery = deleteQuery.eq('user_id', userId)
+    }
+
+    const { error } = await deleteQuery
 
     if (error) {
       throw new Error(`Erro ao excluir despesa estrutural no Supabase: ${error.message}`)

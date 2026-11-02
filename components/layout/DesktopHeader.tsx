@@ -3,6 +3,7 @@
 import React from 'react'
 import { NavigationTab } from './DesktopSidebar'
 import { MonthSelector } from '@/components/metrics/MonthSelector'
+import { GroupSwitcher } from '@/components/groups/GroupSwitcher'
 import { Calendar, Sparkles, RefreshCw } from 'lucide-react'
 
 interface DesktopHeaderProps {
@@ -11,6 +12,8 @@ interface DesktopHeaderProps {
   onDateChange: (date: Date) => void
   onRefresh?: () => void
   loading?: boolean
+  onOpenCreateGroup?: () => void
+  onOpenEditGroup?: () => void
 }
 
 const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
@@ -48,7 +51,15 @@ const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
   }
 }
 
-export function DesktopHeader({ activeTab, currentDate, onDateChange, onRefresh, loading }: DesktopHeaderProps) {
+export function DesktopHeader({ 
+  activeTab, 
+  currentDate, 
+  onDateChange, 
+  onRefresh, 
+  loading,
+  onOpenCreateGroup,
+  onOpenEditGroup
+}: DesktopHeaderProps) {
   const current = TAB_TITLES[activeTab] || TAB_TITLES.metrics
   const showMonthSelector = activeTab === 'metrics' || activeTab === 'progression' || activeTab === 'movements'
 
@@ -68,7 +79,12 @@ export function DesktopHeader({ activeTab, currentDate, onDateChange, onRefresh,
         </p>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <GroupSwitcher 
+          onOpenCreateGroup={onOpenCreateGroup} 
+          onOpenEditGroup={onOpenEditGroup} 
+        />
+
         {showMonthSelector && (
           <div className="scale-95 origin-right">
             <MonthSelector currentDate={currentDate} onChange={onDateChange} />

@@ -19,6 +19,7 @@ export type StructuralExpensePriority = 'baixa' | 'media' | 'alta';
 export interface StructuralExpense {
   id: string;
   user_id: string;
+  group_id?: string | null;
   title: string;
   amount: number;
   category: StructuralExpenseCategory;

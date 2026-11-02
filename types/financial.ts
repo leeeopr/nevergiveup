@@ -32,6 +32,7 @@ export interface FinancialMovement {
   is_paid?: boolean;
   paid_at?: string;
   debt_person_id?: string | null;
+  group_id?: string | null;
   user_id: string;
 }
 
