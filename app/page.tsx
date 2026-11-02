@@ -72,6 +72,7 @@ export default function MetricsPage() {
   const totalBalance = dailyData.length > 0 ? dailyData[dailyData.length - 1].rollingBalance : 0
   const todayData = dailyData.find(d => d.date === new Date().toISOString().split('T')[0])
   const todayBalance = todayData ? todayData.dailyBalance : 0
+  const hasData = movements.length > 0
 
   if (authLoading) {
     return (
