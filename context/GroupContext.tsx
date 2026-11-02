@@ -13,6 +13,7 @@ interface GroupContextType {
   isEntrySelectionActive: boolean
   setIsEntrySelectionActive: (active: boolean) => void
   selectGroup: (groupId: string) => void
+  switchGroup: (groupId: string) => void
   createGroup: (data: { name: string; description?: string | null; color: string }) => Promise<ManagementGroup>
   updateGroup: (groupId: string, data: Partial<ManagementGroup>) => Promise<ManagementGroup>
   archiveGroup: (groupId: string) => Promise<void>
@@ -194,6 +195,7 @@ export function GroupProvider({ children }: { children: React.ReactNode }) {
     isEntrySelectionActive,
     setIsEntrySelectionActive,
     selectGroup,
+    switchGroup: selectGroup,
     createGroup,
     updateGroup,
     archiveGroup,
