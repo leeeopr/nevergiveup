@@ -305,12 +305,61 @@ FOR EACH ROW EXECUTE FUNCTION public.validate_movement_group_and_person();
 ALTER TABLE public.management_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.group_members ENABLE ROW LEVEL SECURITY;
 
+-- 8.1 Helper Security Functions (SECURITY DEFINER bypasses mutual RLS evaluation loops)
+CREATE OR REPLACE FUNCTION public.check_is_group_owner(target_group_id UUID, target_user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.management_groups 
+        WHERE id = target_group_id AND owner_id = target_user_id
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.check_is_group_admin(target_group_id UUID, target_user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.group_members
+        WHERE group_id = target_group_id 
+          AND user_id = target_user_id
+          AND role = 'admin'
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_user_member_group_ids(target_user_id UUID DEFAULT auth.uid())
+RETURNS SETOF UUID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT group_id FROM public.group_members WHERE user_id = target_user_id;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_user_admin_group_ids(target_user_id UUID DEFAULT auth.uid())
+RETURNS SETOF UUID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT group_id FROM public.group_members WHERE user_id = target_user_id AND role = 'admin';
+$$;
+
 DROP POLICY IF EXISTS "Users can view groups they belong to" ON public.management_groups;
 CREATE POLICY "Users can view groups they belong to" 
 ON public.management_groups FOR SELECT 
 USING (
     owner_id = auth.uid() 
-    OR id IN (SELECT group_id FROM public.group_members WHERE user_id = auth.uid())
+    OR id IN (SELECT public.get_user_member_group_ids(auth.uid()))
 );
 
 DROP POLICY IF EXISTS "Users can insert their own groups" ON public.management_groups;
@@ -323,11 +372,11 @@ CREATE POLICY "Owners and admins can update their groups"
 ON public.management_groups FOR UPDATE 
 USING (
     owner_id = auth.uid() 
-    OR id IN (SELECT group_id FROM public.group_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR id IN (SELECT public.get_user_admin_group_ids(auth.uid()))
 )
 WITH CHECK (
     owner_id = auth.uid() 
-    OR id IN (SELECT group_id FROM public.group_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR id IN (SELECT public.get_user_admin_group_ids(auth.uid()))
 );
 
 DROP POLICY IF EXISTS "Only owners can delete their groups" ON public.management_groups;
@@ -341,18 +390,15 @@ CREATE POLICY "Users can view group members"
 ON public.group_members FOR SELECT 
 USING (
     user_id = auth.uid() 
-    OR group_id IN (SELECT id FROM public.management_groups WHERE owner_id = auth.uid())
+    OR public.check_is_group_owner(group_id, auth.uid())
 );
 
 DROP POLICY IF EXISTS "Owners and admins can manage group members" ON public.group_members;
 CREATE POLICY "Owners and admins can manage group members" 
 ON public.group_members FOR ALL 
 USING (
-    group_id IN (
-        SELECT id FROM public.management_groups WHERE owner_id = auth.uid()
-        UNION
-        SELECT group_id FROM public.group_members WHERE user_id = auth.uid() AND role = 'admin'
-    )
+    public.check_is_group_owner(group_id, auth.uid())
+    OR public.check_is_group_admin(group_id, auth.uid())
 );
 
 -- 9. Update RLS on Financial Tables to Enforce Group Isolation

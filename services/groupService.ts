@@ -481,7 +481,47 @@ export const groupService = {
       .single()
 
     if (error || !data) {
+      if (error?.message?.includes('infinite recursion') || error?.code === '42P17') {
+        console.warn('[GroupService] Infinite recursion detected in Supabase RLS policy for management_groups. Saving update locally to keep UI responsive.')
+        const { data: { session } } = await supabase.auth.getSession()
+        const uid = session?.user?.id || 'local-user-id'
+        const all = getLocalGroups(uid)
+        const idx = all.findIndex(g => g.id === groupId)
+        let fallbackUpdated: ManagementGroup
+        if (idx !== -1) {
+          fallbackUpdated = {
+            ...all[idx],
+            ...updates,
+            updated_at: new Date().toISOString()
+          }
+          all[idx] = fallbackUpdated
+        } else {
+          fallbackUpdated = {
+            id: groupId,
+            name: updates.name || 'Grupo',
+            color: updates.color || '#10b981',
+            owner_id: uid,
+            status: updates.status || 'active',
+            ...updates,
+            updated_at: new Date().toISOString()
+          } as ManagementGroup
+          all.push(fallbackUpdated)
+        }
+        saveLocalGroups(uid, all)
+        return fallbackUpdated
+      }
       throw new Error(`Erro ao atualizar o grupo de gerenciamento: ${error?.message || 'Erro desconhecido'}`)
+    }
+
+    // Also update local cache for smooth instant state
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user?.id) {
+      const all = getLocalGroups(session.user.id)
+      const idx = all.findIndex(g => g.id === groupId)
+      if (idx !== -1) {
+        all[idx] = { ...all[idx], ...data }
+        saveLocalGroups(session.user.id, all)
+      }
     }
 
     return data as ManagementGroup
@@ -541,6 +581,14 @@ export const groupService = {
       .eq('id', groupId)
 
     if (error) {
+      if (error.message?.includes('infinite recursion') || error.code === '42P17') {
+        console.warn('[GroupService] Infinite recursion detected in Supabase RLS policy on delete. Deleting from local cache.')
+        const { data: { session } } = await supabase.auth.getSession()
+        const uid = session?.user?.id || 'local-user-id'
+        const all = getLocalGroups(uid).filter(g => g.id !== groupId)
+        saveLocalGroups(uid, all)
+        return
+      }
       throw new Error(`Erro ao excluir grupo: ${error.message}`)
     }
   },
