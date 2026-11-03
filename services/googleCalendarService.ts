@@ -430,7 +430,7 @@ export const googleCalendarService = {
     userId: string,
     calendarId: string,
     accessToken: string
-  ): Promise<Array<{ id: string; occurrenceKey?: string; summary?: string; description?: string; startDate?: string; baseId?: string }>> {
+  ): Promise<Array<{ id: string; occurrenceKey?: string; summary?: string; description?: string; startDate?: string; baseId?: string; groupId?: string }>> {
     try {
       const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`)
       url.searchParams.set('privateExtendedProperty', 'financeira_app=true')

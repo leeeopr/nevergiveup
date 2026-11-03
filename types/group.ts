@@ -19,6 +19,7 @@ export interface ManagementGroup {
   updated_at: string;
   // Role of the current user in this group
   current_user_role?: GroupRole;
+  role?: GroupRole;
   // Aggregate metadata
   members_count?: number;
   movements_count?: number;

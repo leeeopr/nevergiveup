@@ -70,16 +70,49 @@ const TYPE_LABELS: Record<string, { label: string; isIncoming: boolean }> = {
   'custo_estrutural': { label: 'Custo Estrutural', isIncoming: false }
 }
 
+export interface CalculateProjectionParams {
+  startDateStr?: string
+  endDateStr?: string
+  startDate?: Date
+  endDate?: Date
+  movements?: FinancialMovement[]
+  allMovements?: FinancialMovement[]
+  structuralExpenses?: StructuralExpense[]
+  chargeOccurrences?: ChargeOccurrence[]
+}
+
 export const projectionService = {
   calculateProjection(
-    allMovements: FinancialMovement[],
-    structuralExpenses: StructuralExpense[],
-    startDate: Date,
-    endDate: Date,
-    chargeOccurrences: ChargeOccurrence[] = []
+    paramsOrMovements: CalculateProjectionParams | FinancialMovement[],
+    structuralExpensesArg?: StructuralExpense[],
+    startDateArg?: Date,
+    endDateArg?: Date,
+    chargeOccurrencesArg?: ChargeOccurrence[]
   ): ProjectionSummary {
-    const rangeStart = startOfDay(startDate)
-    const rangeEnd = startOfDay(endDate)
+    let allMovements: FinancialMovement[] = []
+    let structuralExpenses: StructuralExpense[] = []
+    let rangeStart: Date
+    let rangeEnd: Date
+    let chargeOccurrences: ChargeOccurrence[] = []
+
+    if (Array.isArray(paramsOrMovements)) {
+      allMovements = paramsOrMovements
+      structuralExpenses = structuralExpensesArg || []
+      rangeStart = startOfDay(startDateArg || new Date())
+      rangeEnd = startOfDay(endDateArg || addMonths(rangeStart, 6))
+      chargeOccurrences = chargeOccurrencesArg || []
+    } else {
+      const p = paramsOrMovements
+      allMovements = p.movements || p.allMovements || []
+      structuralExpenses = p.structuralExpenses || []
+      rangeStart = p.startDate 
+        ? startOfDay(p.startDate) 
+        : (p.startDateStr ? startOfDay(parseISO(p.startDateStr)) : startOfDay(new Date()))
+      rangeEnd = p.endDate 
+        ? startOfDay(p.endDate) 
+        : (p.endDateStr ? startOfDay(parseISO(p.endDateStr)) : addMonths(rangeStart, 6))
+      chargeOccurrences = p.chargeOccurrences || []
+    }
 
     // Ensure valid interval
     const actualEnd = isBefore(rangeEnd, rangeStart) ? addMonths(rangeStart, 6) : rangeEnd

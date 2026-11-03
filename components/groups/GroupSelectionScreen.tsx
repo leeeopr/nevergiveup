@@ -77,7 +77,7 @@ export function GroupSelectionScreen({ onOpenCreateGroup }: GroupSelectionScreen
                     : 'bg-zinc-900/60 hover:bg-zinc-900 border-zinc-800/80 hover:border-zinc-700 shadow-lg'
                 }`}
                 style={{
-                  ringColor: isSelected ? groupColor : 'transparent'
+                  boxShadow: isSelected ? `0 0 0 2px ${groupColor}` : undefined
                 }}
               >
                 {/* Accent top color bar */}
@@ -92,9 +92,9 @@ export function GroupSelectionScreen({ onOpenCreateGroup }: GroupSelectionScreen
                       className="w-4 h-4 rounded-full shadow-sm"
                       style={{ backgroundColor: groupColor }}
                     />
-                    {group.role && (
+                    {(group.role || group.current_user_role) && (
                       <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-750">
-                        {group.role === 'owner' ? 'Proprietário' : group.role}
+                        {(group.role || group.current_user_role) === 'owner' ? 'Proprietário' : (group.role || group.current_user_role)}
                       </span>
                     )}
                   </div>
