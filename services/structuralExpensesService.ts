@@ -1,4 +1,4 @@
-import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
+import { getSupabase, isLocalFallbackActive, getHasGroupIdColumn, setHasGroupIdColumn, isMissingColumnError } from '@/lib/supabase'
 import { StructuralExpense } from '@/types/structural'
 
 const LOCAL_STE_KEY = 'financeira_structural_expenses'
@@ -87,18 +87,32 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+
     let query = supabase
       .from('structural_expenses')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (groupId) {
+    if (canUseGroupId) {
       query = query.eq('group_id', groupId)
     } else {
       query = query.eq('user_id', userId)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[structuralExpensesService] Supabase schema does not have group_id column. Falling back to user_id.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('structural_expenses')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .eq('user_id', userId)
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro de sincronização: Não foi possível carregar as despesas estruturais: ${error.message}`)
@@ -135,21 +149,39 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
 
-    const { data, error } = await supabase
+    const insertPayload: any = {
+      title: expense.title,
+      amount: Number(expense.amount),
+      category: expense.category,
+      recurrence: expense.recurrence,
+      priority: expense.priority,
+      description: expense.description,
+      user_id: userId
+    }
+    if (canUseGroupId) {
+      insertPayload.group_id = finalGroupId
+    }
+
+    let { data, error } = await supabase
       .from('structural_expenses')
-      .insert({
-        title: expense.title,
-        amount: Number(expense.amount),
-        category: expense.category,
-        recurrence: expense.recurrence,
-        priority: expense.priority,
-        description: expense.description,
-        group_id: finalGroupId,
-        user_id: userId
-      })
+      .insert(insertPayload)
       .select()
       .single()
+
+    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+      console.warn('[structuralExpensesService] Supabase schema does not have group_id column. Retrying insert without group_id.')
+      setHasGroupIdColumn(false)
+      delete insertPayload.group_id
+      const retry = await supabase
+        .from('structural_expenses')
+        .insert(insertPayload)
+        .select()
+        .single()
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Falha ao registrar despesa estrutural no banco de dados: ${error.message}`)
@@ -185,26 +217,46 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
+
+    const updatePayload: any = {
+      ...expense,
+      amount: expense.amount !== undefined ? Number(expense.amount) : undefined,
+      updated_at: new Date().toISOString()
+    }
+    if (canUseGroupId) {
+      updatePayload.group_id = finalGroupId
+    }
 
     let updateQuery = supabase
       .from('structural_expenses')
-      .update({
-        ...expense,
-        group_id: finalGroupId,
-        amount: expense.amount !== undefined ? Number(expense.amount) : undefined,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('id', id)
 
-    if (finalGroupId) {
+    if (canUseGroupId) {
       updateQuery = updateQuery.eq('group_id', finalGroupId)
     } else {
       updateQuery = updateQuery.eq('user_id', userId)
     }
 
-    const { data, error } = await updateQuery
+    let { data, error } = await updateQuery
       .select()
       .single()
+
+    if (error && isMissingColumnError(error, 'group_id')) {
+      console.warn('[structuralExpensesService] Supabase schema does not have group_id column. Retrying update without group_id.')
+      setHasGroupIdColumn(false)
+      delete updatePayload.group_id
+      const retry = await supabase
+        .from('structural_expenses')
+        .update(updatePayload)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single()
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro ao atualizar despesa estrutural no Supabase: ${error.message}`)
@@ -223,19 +275,31 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
 
     let deleteQuery = supabase
       .from('structural_expenses')
       .delete()
       .eq('id', id)
 
-    if (groupId) {
+    if (canUseGroupId) {
       deleteQuery = deleteQuery.eq('group_id', groupId)
     } else {
       deleteQuery = deleteQuery.eq('user_id', userId)
     }
 
-    const { error } = await deleteQuery
+    let { error } = await deleteQuery
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[structuralExpensesService] Supabase schema does not have group_id column. Retrying delete without group_id.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('structural_expenses')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro ao excluir despesa estrutural no Supabase: ${error.message}`)

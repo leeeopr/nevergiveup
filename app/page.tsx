@@ -34,6 +34,7 @@ import { GroupSelectionScreen } from '@/components/groups/GroupSelectionScreen'
 import { GroupModal } from '@/components/groups/GroupModal'
 import { GroupSwitcher } from '@/components/groups/GroupSwitcher'
 import { ManagementGroup } from '@/types/group'
+import { getHasGroupIdColumn } from '@/lib/supabase'
 
 export default function MetricsPage() {
   const { user, profile, loading: authLoading, signOut, isDbConnected, isOffline, toggleEmpresaMode } = useAuth()
@@ -56,6 +57,18 @@ export default function MetricsPage() {
   const [activeTab, setActiveTab] = useState<'metrics' | 'cobrancas' | 'projection' | 'movements' | 'progression' | 'structural' | 'calendar' | 'empresa'>('metrics')
   const [addStructuralTrigger, setAddStructuralTrigger] = useState(0)
   const [externalFabTrigger, setExternalFabTrigger] = useState(0)
+  const [hasGroupColumn, setHasGroupColumn] = useState<boolean | null>(() => getHasGroupIdColumn())
+  const [dismissMigrationBanner, setDismissMigrationBanner] = useState(false)
+
+  useEffect(() => {
+    const handleSchemaChange = (e: any) => {
+      setHasGroupColumn(e.detail?.available)
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('financeira_schema_group_id_changed', handleSchemaChange)
+      return () => window.removeEventListener('financeira_schema_group_id_changed', handleSchemaChange)
+    }
+  }, [])
 
   const { metrics, loading, error, movements, refresh, updatePersonalBudget } = useFinancialMetrics(
     currentDate.getFullYear(),
@@ -227,6 +240,31 @@ export default function MetricsPage() {
           onOpenCreateGroup={handleOpenCreateGroup}
           onOpenEditGroup={handleOpenEditGroup}
         />
+
+        {/* Schema Compatibility Banner if database lacks group_id column */}
+        {hasGroupColumn === false && isDbConnected && !dismissMigrationBanner && (
+          <div className="mb-6 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 shrink-0">
+                <Database size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-zinc-100">
+                  Modo de Compatibilidade Ativo (Supabase SOT)
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Suas movimentações e dados estão sincronizados perfeitamente com seu banco. Para habilitar múltiplos grupos isolados no Supabase, execute o script <code className="text-indigo-300 font-mono bg-indigo-950/60 px-1.5 py-0.5 rounded text-[10px]">supabase_migration_groups.sql</code> no Editor SQL do seu projeto Supabase.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setDismissMigrationBanner(true)}
+              className="text-[11px] text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors shrink-0 cursor-pointer self-end sm:self-center"
+            >
+              Entendido
+            </button>
+          </div>
+        )}
 
         {/* Mobile Top Status & Profile Bar (Hidden on Desktop) */}
         <div className="flex lg:hidden flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 bg-velvet-soft/30 border border-silver-brushed/5 rounded-[28px] p-4 sm:px-6">

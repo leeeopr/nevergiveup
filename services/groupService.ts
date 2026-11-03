@@ -1,4 +1,4 @@
-import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
+import { getSupabase, isLocalFallbackActive, setHasGroupIdColumn } from '@/lib/supabase'
 import { ManagementGroup, GroupMember, PRESET_GROUP_COLORS } from '@/types/group'
 
 const LOCAL_GROUPS_KEY = 'financeira_management_groups'
@@ -242,7 +242,21 @@ export const groupService = {
 
       if (ownedErr) {
         console.warn('[GroupService] Supabase fetch owned groups warning:', ownedErr.message)
-        return getLocalGroups(userId)
+        setHasGroupIdColumn(false)
+        const local = getLocalGroups(userId)
+        if (local.length > 0) return local
+        return [{
+          id: 'group-pessoal-default',
+          name: 'Pessoal',
+          description: 'Ambiente financeiro pessoal e contas gerais',
+          color: PRESET_GROUP_COLORS[0].hex,
+          owner_id: userId,
+          status: 'active',
+          settings: { currency: 'BRL', defaultMonthlyBudget: 1200 },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          current_user_role: 'owner'
+        }]
       }
 
       // Fetch group memberships
@@ -389,6 +403,31 @@ export const groupService = {
       .single()
 
     if (error || !data) {
+      if (error?.message?.includes('management_groups') || error?.code === '42P01') {
+        console.warn('[GroupService] management_groups table missing on Supabase. Saved group locally.')
+        setHasGroupIdColumn(false)
+        const groups = getLocalGroups(userId)
+        const mockId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : 'grp_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now()
+
+        const localGroup: ManagementGroup = {
+          id: mockId,
+          name: trimmedName,
+          description: payload.description?.trim() || null,
+          color,
+          owner_id: userId,
+          status: 'active',
+          settings: payload.settings || { currency: 'BRL' },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          current_user_role: 'owner'
+        }
+
+        groups.push(localGroup)
+        saveLocalGroups(userId, groups)
+        return localGroup
+      }
       throw new Error(`Falha ao criar o grupo de gerenciamento: ${error?.message || 'Erro desconhecido'}`)
     }
 

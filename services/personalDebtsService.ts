@@ -1,4 +1,4 @@
-import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
+import { getSupabase, isLocalFallbackActive, getHasGroupIdColumn, setHasGroupIdColumn, isMissingColumnError } from '@/lib/supabase'
 import { DebtPerson, Debt, DebtPayment, PersonWithDebts, GlobalDebtsMetrics, DebtDirection } from '@/types/personalDebts'
 import { financialService } from '@/services/financialService'
 import { format } from 'date-fns'
@@ -162,18 +162,32 @@ export const personalDebtsService = {
     }
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+
     let query = supabase
       .from('debt_persons')
       .select('*')
       .order('name', { ascending: true })
 
-    if (groupId) {
+    if (canUseGroupId) {
       query = query.eq('group_id', groupId)
     } else {
       query = query.eq('user_id', userId)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[personalDebtsService] Supabase schema does not have group_id column. Falling back to user_id.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('debt_persons')
+        .select('*')
+        .order('name', { ascending: true })
+        .eq('user_id', userId)
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       console.warn('Erro ao carregar pessoas do Supabase, recorrendo ao cache local:', error)
@@ -272,14 +286,15 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
 
-    try {
+    const executeQueries = async (useGroup: boolean) => {
       let personsQuery = supabase.from('debt_persons').select('*').order('name', { ascending: true })
       let debtsQuery = supabase.from('debts').select('*')
       let paymentsQuery = supabase.from('debt_payments').select('*')
       let movementsQuery = supabase.from('financial_movements').select('*').eq('type', 'cobranca')
 
-      if (groupId) {
+      if (useGroup) {
         personsQuery = personsQuery.eq('group_id', groupId)
         debtsQuery = debtsQuery.eq('group_id', groupId)
         paymentsQuery = paymentsQuery.eq('group_id', groupId)
@@ -291,12 +306,26 @@ export const personalDebtsService = {
         movementsQuery = movementsQuery.eq('user_id', userId)
       }
 
-      const [personsRes, debtsRes, paymentsRes, movementsRes] = await Promise.all([
-        personsQuery,
-        debtsQuery,
-        paymentsQuery,
-        movementsQuery
-      ])
+      return Promise.all([personsQuery, debtsQuery, paymentsQuery, movementsQuery])
+    }
+
+    try {
+      let [personsRes, debtsRes, paymentsRes, movementsRes] = await executeQueries(canUseGroupId)
+
+      if (
+        (personsRes.error && isMissingColumnError(personsRes.error, 'group_id')) ||
+        (debtsRes.error && isMissingColumnError(debtsRes.error, 'group_id')) ||
+        (paymentsRes.error && isMissingColumnError(paymentsRes.error, 'group_id')) ||
+        (movementsRes.error && isMissingColumnError(movementsRes.error, 'group_id'))
+      ) {
+        console.warn('[personalDebtsService] Group column not present. Falling back to user_id scope.')
+        setHasGroupIdColumn(false)
+        const retries = await executeQueries(false)
+        personsRes = retries[0]
+        debtsRes = retries[1]
+        paymentsRes = retries[2]
+        movementsRes = retries[3]
+      }
 
       if (personsRes.error) throw personsRes.error
       if (debtsRes.error) throw debtsRes.error
@@ -405,18 +434,35 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
 
-    const { data, error } = await supabase
+    const insertPayload: any = {
+      user_id: userId,
+      name: trimmedName,
+      phone: payload.phone?.trim() || null,
+      notes: payload.notes?.trim() || null
+    }
+    if (canUseGroupId) {
+      insertPayload.group_id = finalGroupId
+    }
+
+    let { data, error } = await supabase
       .from('debt_persons')
-      .insert({
-        user_id: userId,
-        group_id: finalGroupId,
-        name: trimmedName,
-        phone: payload.phone?.trim() || null,
-        notes: payload.notes?.trim() || null
-      })
+      .insert(insertPayload)
       .select()
       .single()
+
+    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+      setHasGroupIdColumn(false)
+      delete insertPayload.group_id
+      const retry = await supabase
+        .from('debt_persons')
+        .insert(insertPayload)
+        .select()
+        .single()
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Falha ao cadastrar pessoa no banco: ${error.message}`)
@@ -573,22 +619,39 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
 
-    const { data, error } = await supabase
+    const insertPayload: any = {
+      user_id: userId,
+      person_id: payload.person_id,
+      type: payload.type,
+      description: trimmedDesc,
+      amount: Number(payload.amount),
+      due_date: payload.due_date || null,
+      notes: payload.notes?.trim() || null,
+      status: 'pending'
+    }
+    if (canUseGroupId) {
+      insertPayload.group_id = finalGroupId
+    }
+
+    let { data, error } = await supabase
       .from('debts')
-      .insert({
-        user_id: userId,
-        group_id: finalGroupId,
-        person_id: payload.person_id,
-        type: payload.type,
-        description: trimmedDesc,
-        amount: Number(payload.amount),
-        due_date: payload.due_date || null,
-        notes: payload.notes?.trim() || null,
-        status: 'pending'
-      })
+      .insert(insertPayload)
       .select()
       .single()
+
+    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+      setHasGroupIdColumn(false)
+      delete insertPayload.group_id
+      const retry = await supabase
+        .from('debts')
+        .insert(insertPayload)
+        .select()
+        .single()
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Falha ao registrar dívida: ${error.message}`)
@@ -807,10 +870,15 @@ export const personalDebtsService = {
     const userId = await getUserId()
 
     // Check debt remaining amount in Supabase
-    const { data: debt, error: debtErr } = await supabase.from('debts').select('amount, group_id').eq('id', payload.debt_id).single()
-    if (debtErr || !debt) throw new Error('Dívida não encontrada no banco.')
+    let { data: debt, error: debtErr } = await supabase.from('debts').select('*').eq('id', payload.debt_id).single()
+    if (debtErr || !debt) {
+      const retryDebt = await supabase.from('debts').select('amount').eq('id', payload.debt_id).single()
+      if (retryDebt.error || !retryDebt.data) throw new Error('Dívida não encontrada no banco.')
+      debt = retryDebt.data
+    }
 
     const paymentGroupId = finalGroupId || debt.group_id || null
+    const canUseGroupId = Boolean(paymentGroupId && getHasGroupIdColumn() !== false)
 
     const { data: existingPayments } = await supabase.from('debt_payments').select('amount').eq('debt_id', payload.debt_id)
     const currentPaid = (existingPayments || []).reduce((acc, p) => acc + Number(p.amount), 0)
@@ -820,19 +888,35 @@ export const personalDebtsService = {
       throw new Error(`O valor informado (R$ ${payload.amount.toFixed(2)}) ultrapassa o saldo pendente (R$ ${remainingBefore.toFixed(2)}).`)
     }
 
-    const { data: paymentData, error: payErr } = await supabase
+    const payPayload: any = {
+      user_id: userId,
+      debt_id: payload.debt_id,
+      amount: Number(payload.amount),
+      payment_date: payload.payment_date,
+      notes: payload.notes?.trim() || null,
+      financial_movement_id: linkedMovementId
+    }
+    if (canUseGroupId) {
+      payPayload.group_id = paymentGroupId
+    }
+
+    let { data: paymentData, error: payErr } = await supabase
       .from('debt_payments')
-      .insert({
-        user_id: userId,
-        group_id: paymentGroupId,
-        debt_id: payload.debt_id,
-        amount: Number(payload.amount),
-        payment_date: payload.payment_date,
-        notes: payload.notes?.trim() || null,
-        financial_movement_id: linkedMovementId
-      })
+      .insert(payPayload)
       .select()
       .single()
+
+    if (payErr && isMissingColumnError(payErr, 'group_id') && payPayload.group_id) {
+      setHasGroupIdColumn(false)
+      delete payPayload.group_id
+      const retry = await supabase
+        .from('debt_payments')
+        .insert(payPayload)
+        .select()
+        .single()
+      paymentData = retry.data
+      payErr = retry.error
+    }
 
     if (payErr) {
       throw new Error(`Erro ao registrar pagamento: ${payErr.message}`)

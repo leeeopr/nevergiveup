@@ -1,4 +1,4 @@
-import { getSupabase, isLocalFallbackActive } from '@/lib/supabase'
+import { getSupabase, isLocalFallbackActive, getHasGroupIdColumn, setHasGroupIdColumn, isMissingColumnError } from '@/lib/supabase'
 import { FinancialMovement } from '@/types/financial'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
 import { googleCalendarService } from '@/services/googleCalendarService'
@@ -106,6 +106,8 @@ export const financialService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+
     let query = supabase
       .from('financial_movements')
       .select('*')
@@ -113,13 +115,27 @@ export const financialService = {
       .lte('date', endStr)
       .order('date', { ascending: false })
 
-    if (groupId) {
+    if (canUseGroupId) {
       query = query.eq('group_id', groupId)
     } else {
       query = query.eq('user_id', userId)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[financialService] Supabase schema does not have group_id column yet. Falling back to user_id filter.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('financial_movements')
+        .select('*')
+        .gte('date', starStr)
+        .lte('date', endStr)
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro ao buscar movimentações financeiras para ${month + 1}/${year}: ${error.message}`)
@@ -141,18 +157,32 @@ export const financialService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+
     let query = supabase
       .from('financial_movements')
       .select('*')
       .order('date', { ascending: true })
 
-    if (groupId) {
+    if (canUseGroupId) {
       query = query.eq('group_id', groupId)
     } else {
       query = query.eq('user_id', userId)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[financialService] Supabase schema does not have group_id column yet. Falling back to user_id filter.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('financial_movements')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: true })
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro ao carregar o histórico de movimentações do banco de dados: ${error.message}`)
@@ -185,18 +215,32 @@ export const financialService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+
     let query = supabase
       .from('financial_movements')
       .select('amount, type, is_paid')
       .lt('date', beforeDate)
 
-    if (groupId) {
+    if (canUseGroupId) {
       query = query.eq('group_id', groupId)
     } else {
       query = query.eq('user_id', userId)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[financialService] Supabase schema does not have group_id column yet. Falling back to user_id filter.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('financial_movements')
+        .select('amount, type, is_paid')
+        .lt('date', beforeDate)
+        .eq('user_id', userId)
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro de cálculo do saldo de transições: ${error.message}`)
@@ -249,34 +293,46 @@ export const financialService = {
     const supabase = getSupabase()
     const userId = await getUserId()
 
-    // Validate that debt_person_id belongs to the authenticated user scope and matches group
+    // Validate that debt_person_id belongs to the authenticated user scope
     if (movement.debt_person_id) {
-      let personQuery = supabase
+      const { data: personCheck } = await supabase
         .from('debt_persons')
-        .select('id, name, group_id')
+        .select('id, name')
         .eq('id', movement.debt_person_id)
         .eq('user_id', userId)
+        .maybeSingle()
 
-      if (finalGroupId) {
-        personQuery = personQuery.or(`group_id.eq.${finalGroupId},group_id.is.null`)
-      }
-
-      const { data: personCheck, error: checkErr } = await personQuery.maybeSingle()
-
-      if (checkErr || !personCheck) {
-        throw new Error('A pessoa vinculada à cobrança não foi encontrada ou pertence a outro grupo de gerenciamento.')
+      if (!personCheck) {
+        throw new Error('A pessoa vinculada à cobrança não foi encontrada.')
       }
     }
 
-    const { data, error } = await supabase
+    const insertPayload: any = {
+      ...movement,
+      user_id: userId
+    }
+    if (finalGroupId && getHasGroupIdColumn() !== false) {
+      insertPayload.group_id = finalGroupId
+    }
+
+    let { data, error } = await supabase
       .from('financial_movements')
-      .insert({
-        ...movement,
-        group_id: finalGroupId,
-        user_id: userId
-      })
+      .insert(insertPayload)
       .select()
       .single()
+
+    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+      console.warn('[financialService] Supabase schema does not have group_id column. Saving movement without group_id.')
+      setHasGroupIdColumn(false)
+      delete insertPayload.group_id
+      const retry = await supabase
+        .from('financial_movements')
+        .insert(insertPayload)
+        .select()
+        .single()
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro de persistência na nuvem (Supabase): Não foi possível incluir a movimentação. Detalhes: ${error.message}`)
@@ -327,27 +383,22 @@ export const financialService = {
     const supabase = getSupabase()
     const userId = await getUserId()
 
-    // Validate that debt_person_id belongs to the authenticated user scope and group if being modified
     if (movement.debt_person_id) {
-      let personQuery = supabase
+      const { data: personCheck } = await supabase
         .from('debt_persons')
-        .select('id, name, group_id')
+        .select('id, name')
         .eq('id', movement.debt_person_id)
         .eq('user_id', userId)
+        .maybeSingle()
 
-      if (finalGroupId) {
-        personQuery = personQuery.or(`group_id.eq.${finalGroupId},group_id.is.null`)
-      }
-
-      const { data: personCheck, error: checkErr } = await personQuery.maybeSingle()
-
-      if (checkErr || !personCheck) {
-        throw new Error('A pessoa selecionada não foi encontrada ou pertence a outro grupo de gerenciamento.')
+      if (!personCheck) {
+        throw new Error('A pessoa selecionada não foi encontrada.')
       }
     }
 
     const updatePayload: any = { ...movement }
-    if (finalGroupId) {
+    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
+    if (canUseGroupId) {
       updatePayload.group_id = finalGroupId
     }
 
@@ -356,15 +407,30 @@ export const financialService = {
       .update(updatePayload)
       .eq('id', id)
 
-    if (finalGroupId) {
+    if (canUseGroupId) {
       updateQuery = updateQuery.eq('group_id', finalGroupId)
     } else {
       updateQuery = updateQuery.eq('user_id', userId)
     }
 
-    const { data, error } = await updateQuery
+    let { data, error } = await updateQuery
       .select()
       .single()
+
+    if (error && isMissingColumnError(error, 'group_id')) {
+      console.warn('[financialService] Supabase schema does not have group_id column. Updating without group_id.')
+      setHasGroupIdColumn(false)
+      delete updatePayload.group_id
+      const retry = await supabase
+        .from('financial_movements')
+        .update(updatePayload)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single()
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro de persistência na nuvem ao tentar salvar alterações: ${error.message}`)
@@ -402,18 +468,30 @@ export const financialService = {
       console.warn('Google Calendar delete background error:', err)
     })
 
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
     let deleteQuery = supabase
       .from('financial_movements')
       .delete()
       .eq('id', id)
 
-    if (groupId) {
+    if (canUseGroupId) {
       deleteQuery = deleteQuery.eq('group_id', groupId)
     } else {
       deleteQuery = deleteQuery.eq('user_id', userId)
     }
 
-    const { error } = await deleteQuery
+    let { error } = await deleteQuery
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[financialService] Supabase schema does not have group_id column. Deleting by id and user_id.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('financial_movements')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro ao sincronizar exclusão física com o Supabase: ${error.message}`)
@@ -433,19 +511,34 @@ export const financialService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
+    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+
     let query = supabase
       .from('financial_movements')
       .select('*')
       .gte('date', startDate)
       .lte('date', endDate)
 
-    if (groupId) {
+    if (canUseGroupId) {
       query = query.eq('group_id', groupId)
     } else {
       query = query.eq('user_id', userId)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    if (error && isMissingColumnError(error, 'group_id') && canUseGroupId) {
+      console.warn('[financialService] Supabase schema does not have group_id column. Falling back to user_id.')
+      setHasGroupIdColumn(false)
+      const retry = await supabase
+        .from('financial_movements')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .eq('user_id', userId)
+      data = retry.data
+      error = retry.error
+    }
 
     if (error) {
       throw new Error(`Erro ao buscar intervalo de fluxo: ${error.message}`)
