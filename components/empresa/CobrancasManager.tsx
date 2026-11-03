@@ -19,11 +19,17 @@ import {
   Users
 } from 'lucide-react'
 
+import { useGroup } from '@/context/GroupContext'
+
 interface CobrancasManagerProps {
   userId: string
 }
 
 export function CobrancasManager({ userId }: CobrancasManagerProps) {
+  const { currentGroup } = useGroup()
+  const activeGroupId = currentGroup?.id
+  const lastGroupIdRef = React.useRef<string | null>(null)
+
   const [charges, setCharges] = useState<Charge[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -32,23 +38,36 @@ export function CobrancasManager({ userId }: CobrancasManagerProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [chargeToEdit, setChargeToEdit] = useState<Charge | null>(null)
 
+  if (lastGroupIdRef.current !== activeGroupId) {
+    lastGroupIdRef.current = activeGroupId || null
+    if (charges.length > 0) {
+      setCharges([])
+    }
+  }
+
   const loadData = useCallback(async () => {
+    if (!activeGroupId) {
+      setCharges([])
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
-      const data = await cobrancasService.getCharges()
-      setCharges(data)
+      const data = await cobrancasService.getCharges(activeGroupId)
+      if (lastGroupIdRef.current === activeGroupId) {
+        setCharges(data)
+      }
     } catch (err) {
       console.error('Error loading charges:', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeGroupId])
 
   useEffect(() => {
-    Promise.resolve().then(() => {
-      loadData()
-    })
-  }, [loadData])
+    loadData()
+  }, [loadData, activeGroupId])
 
   const handleAddCharge = () => {
     setChargeToEdit(null)

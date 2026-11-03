@@ -9,6 +9,8 @@ import { generateExpectedOccurrences } from '@/utils/chargeUtils'
 import { DialogShell } from '@/components/ui/DialogShell'
 import { Calendar, User, FileText, DollarSign, CalendarDays, AlertCircle, CheckCircle2, Loader2, Sparkles, HandCoins, X } from 'lucide-react'
 
+import { useGroup } from '@/context/GroupContext'
+
 interface ChargeFormModalProps {
   isOpen: boolean
   onClose: () => void
@@ -26,6 +28,9 @@ export function ChargeFormModal({
   preselectedClient,
   userId
 }: ChargeFormModalProps) {
+  const { currentGroup } = useGroup()
+  const activeGroupId = currentGroup?.id
+
   const [clients, setClients] = useState<Client[]>([])
   const [selectedClientId, setSelectedClientId] = useState<string>('')
   const [clientName, setClientName] = useState('')
@@ -39,14 +44,16 @@ export function ChargeFormModal({
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
-  // Load clients list for dropdown selection
+  // Load clients list for dropdown selection scoped to the active group
   useEffect(() => {
-    if (isOpen && userId) {
-      companyService.getClients(userId)
+    if (isOpen && userId && activeGroupId) {
+      companyService.getClients(userId, activeGroupId)
         .then(setClients)
         .catch(err => console.warn('Error loading clients:', err))
+    } else if (!activeGroupId) {
+      setClients([])
     }
-  }, [isOpen, userId])
+  }, [isOpen, userId, activeGroupId])
 
   // Populate form defaults
   useEffect(() => {
@@ -149,6 +156,11 @@ export function ChargeFormModal({
       return
     }
 
+    if (!activeGroupId) {
+      setErrorMsg('Selecione um grupo ativo para cadastrar cobrança.')
+      return
+    }
+
     try {
       setLoading(true)
       setErrorMsg('')
@@ -161,13 +173,14 @@ export function ChargeFormModal({
         start_date: startDate,
         end_date: endDate,
         billing_day: Number(billingDay),
-        notes: notes.trim() || null
+        notes: notes.trim() || null,
+        group_id: activeGroupId
       }
 
       if (chargeToEdit) {
         await cobrancasService.updateCharge(chargeToEdit.id, payload)
       } else {
-        await cobrancasService.createCharge(payload)
+        await cobrancasService.createCharge(payload, activeGroupId)
       }
 
       onSuccess()

@@ -26,8 +26,10 @@ export function useFinancialProjection() {
   // Default end date = 1 Year from today or End of current year
   const [endDateStr, setEndDateStr] = useState<string>(() => format(addMonths(new Date(), 12), 'yyyy-MM-dd'))
 
+  const activeGroupId = currentGroup?.id
+
   const refreshData = useCallback(async () => {
-    if (!user) {
+    if (!user || !activeGroupId) {
       setMovements([])
       setStructuralExpenses([])
       setChargeOccurrences([])
@@ -38,9 +40,9 @@ export function useFinancialProjection() {
     try {
       setLoading(true)
       const [moves, structs, occurrences] = await Promise.all([
-        financialService.getAllMovements(currentGroup?.id),
-        structuralExpensesService.getExpenses(currentGroup?.id),
-        cobrancasService.getOccurrencesByRange(startDateStr, endDateStr, currentGroup?.id)
+        financialService.getAllMovements(activeGroupId),
+        structuralExpensesService.getExpenses(activeGroupId),
+        cobrancasService.getOccurrencesByRange(startDateStr, endDateStr, activeGroupId)
       ])
       setMovements(moves)
       setStructuralExpenses(structs)
@@ -52,48 +54,52 @@ export function useFinancialProjection() {
     } finally {
       setLoading(false)
     }
-  }, [user, currentGroup?.id, startDateStr, endDateStr])
+  }, [user, activeGroupId, startDateStr, endDateStr])
 
   useEffect(() => {
     let isMounted = true
 
-    async function loadData() {
-      if (authLoading) return
-      if (!user) {
-        if (isMounted) {
-          setLoading(false)
-        }
-        return
-      }
+    if (authLoading) return
 
-      try {
-        const [moves, structs, occurrences] = await Promise.all([
-          financialService.getAllMovements(currentGroup?.id),
-          structuralExpensesService.getExpenses(currentGroup?.id),
-          cobrancasService.getOccurrencesByRange(startDateStr, endDateStr, currentGroup?.id)
-        ])
+    if (!user || !activeGroupId) {
+      setMovements([])
+      setStructuralExpenses([])
+      setChargeOccurrences([])
+      setLoading(false)
+      return
+    }
+
+    // Reset while fetching to prevent displaying previous group's projection
+    setMovements([])
+    setStructuralExpenses([])
+    setChargeOccurrences([])
+    setLoading(true)
+
+    Promise.all([
+      financialService.getAllMovements(activeGroupId),
+      structuralExpensesService.getExpenses(activeGroupId),
+      cobrancasService.getOccurrencesByRange(startDateStr, endDateStr, activeGroupId)
+    ])
+      .then(([moves, structs, occurrences]) => {
         if (!isMounted) return
         setMovements(moves)
         setStructuralExpenses(structs)
         setChargeOccurrences(occurrences)
         setError(null)
-      } catch (err) {
+      })
+      .catch((err) => {
         if (!isMounted) return
         console.error('Failed to load projection data:', err)
         setError(err instanceof Error ? err : new Error('Falha ao carregar projeção'))
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadData()
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
 
     return () => {
       isMounted = false
     }
-  }, [authLoading, user, currentGroup?.id, startDateStr, endDateStr])
+  }, [authLoading, user, activeGroupId, startDateStr, endDateStr])
 
   // Presets handlers
   const setPresetRange = useCallback((preset: '3m' | '6m' | '1y' | '2y' | 'end_of_year') => {

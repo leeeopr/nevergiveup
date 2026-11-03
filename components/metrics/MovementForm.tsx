@@ -170,13 +170,17 @@ export function MovementForm({
 
   const handleCreateNewPerson = async () => {
     if (!newPersonName.trim()) return
+    if (!currentGroup?.id) {
+      alert('Selecione um grupo ativo para cadastrar pessoas.')
+      return
+    }
     setSavingNewPerson(true)
     try {
       const created = await personalDebtsService.createPerson({
         name: newPersonName.trim(),
         phone: newPersonPhone.trim() || undefined,
-        group_id: currentGroup?.id || null
-      }, currentGroup?.id)
+        group_id: currentGroup.id
+      }, currentGroup.id)
       setPersons(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setValue('debt_person_id', created.id, { shouldValidate: true })
       setValue('debtor_name', created.name, { shouldValidate: true })
@@ -193,6 +197,13 @@ export function MovementForm({
   const onSubmit = async (data: MovementFormData) => {
     try {
       setInternalLoading(true)
+
+      const targetGroupId = initialData?.group_id || currentGroup?.id
+      if (!targetGroupId) {
+        alert('Selecione ou crie um grupo de gerenciamento ativo antes de registrar transações.')
+        setInternalLoading(false)
+        return
+      }
 
       let resolvedPersonId = data.debt_person_id || null
       let resolvedDebtorName = data.debtor_name?.trim() || ''
@@ -215,7 +226,7 @@ export function MovementForm({
       }
 
       const payload: any = {
-        group_id: initialData?.group_id || currentGroup?.id || null,
+        group_id: targetGroupId,
         type,
         amount: Number(data.amount),
         description: data.description,
@@ -240,9 +251,9 @@ export function MovementForm({
       }
 
       if (id) {
-        await financialService.updateMovement(id, payload, currentGroup?.id)
+        await financialService.updateMovement(id, payload, targetGroupId)
       } else {
-        await financialService.insertMovement(payload, currentGroup?.id)
+        await financialService.insertMovement(payload, targetGroupId)
       }
       onSuccess()
     } catch (error: any) {

@@ -92,21 +92,25 @@ export const financialService = {
     const starStr = format(startOfMonth(new Date(year, month)), 'yyyy-MM-dd')
     const endStr = format(endOfMonth(new Date(year, month)), 'yyyy-MM-dd')
 
+    // Strict group isolation: without an active group, do not leak cross-group data
+    if (!groupId) {
+      return []
+    }
+
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
       return all
         .filter(m => {
           const matchDate = m.date >= starStr && m.date <= endStr
           if (!matchDate) return false
-          if (!groupId) return true
-          return m.group_id === groupId || (!m.group_id && groupId === 'group-pessoal-default')
+          return m.group_id === groupId
         })
         .sort((a, b) => b.date.localeCompare(a.date))
     }
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     let query = supabase
       .from('financial_movements')
@@ -145,19 +149,21 @@ export const financialService = {
   },
 
   async getAllMovements(groupId?: string): Promise<FinancialMovement[]> {
+    // Strict isolation: require active group
+    if (!groupId) {
+      return []
+    }
+
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
       return all
-        .filter(m => {
-          if (!groupId) return true
-          return m.group_id === groupId || (!m.group_id && groupId === 'group-pessoal-default')
-        })
+        .filter(m => m.group_id === groupId)
         .sort((a, b) => a.date.localeCompare(b.date))
     }
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     let query = supabase
       .from('financial_movements')
@@ -192,14 +198,17 @@ export const financialService = {
   },
 
   async getOpeningBalance(beforeDate: string, groupId?: string): Promise<number> {
+    if (!groupId) {
+      return 0
+    }
+
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
       return all
         .filter(m => {
           const matchDate = m.date < beforeDate
           if (!matchDate) return false
-          if (!groupId) return true
-          return m.group_id === groupId || (!m.group_id && groupId === 'group-pessoal-default')
+          return m.group_id === groupId
         })
         .reduce((acc, m) => {
           const amount = Number(m.amount)
@@ -215,7 +224,7 @@ export const financialService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     let query = supabase
       .from('financial_movements')
@@ -264,6 +273,10 @@ export const financialService = {
   ): Promise<FinancialMovement> {
     const finalGroupId = movement.group_id || groupId || null
 
+    if (!finalGroupId) {
+      throw new Error('Não é possível criar transação sem grupo: Selecione um grupo de gerenciamento ativo antes de registrar movimentações.')
+    }
+
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
       const mockId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
@@ -281,8 +294,8 @@ export const financialService = {
       saveLocalMovements(all)
 
       // Sync with Google Calendar asynchronously without blocking financial ops
-      this.getAllMovements(finalGroupId || undefined).then(allMoves => {
-        googleCalendarService.syncAllMovements('local-user-id', allMoves, 12, finalGroupId || undefined).catch(err => {
+      this.getAllMovements(finalGroupId).then(allMoves => {
+        googleCalendarService.syncAllMovements('local-user-id', allMoves, 12, finalGroupId).catch(err => {
           console.warn('Google Calendar sync background error:', err)
         })
       })
@@ -293,26 +306,30 @@ export const financialService = {
     const supabase = getSupabase()
     const userId = await getUserId()
 
-    // Validate that debt_person_id belongs to the authenticated user scope
+    // Validate that debt_person_id belongs to the authorized group / user scope
     if (movement.debt_person_id) {
-      const { data: personCheck } = await supabase
+      const personCheckQuery = supabase
         .from('debt_persons')
         .select('id, name')
         .eq('id', movement.debt_person_id)
-        .eq('user_id', userId)
-        .maybeSingle()
+
+      if (getHasGroupIdColumn() !== false) {
+        personCheckQuery.eq('group_id', finalGroupId)
+      } else {
+        personCheckQuery.eq('user_id', userId)
+      }
+
+      const { data: personCheck } = await personCheckQuery.maybeSingle()
 
       if (!personCheck) {
-        throw new Error('A pessoa vinculada à cobrança não foi encontrada.')
+        throw new Error('A pessoa vinculada à cobrança não foi encontrada no grupo selecionado.')
       }
     }
 
     const insertPayload: any = {
       ...movement,
-      user_id: userId
-    }
-    if (finalGroupId && getHasGroupIdColumn() !== false) {
-      insertPayload.group_id = finalGroupId
+      user_id: userId,
+      group_id: finalGroupId
     }
 
     let { data, error } = await supabase
@@ -321,7 +338,7 @@ export const financialService = {
       .select()
       .single()
 
-    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+    if (error && isMissingColumnError(error, 'group_id')) {
       console.warn('[financialService] Supabase schema does not have group_id column. Saving movement without group_id.')
       setHasGroupIdColumn(false)
       delete insertPayload.group_id
@@ -339,8 +356,8 @@ export const financialService = {
     }
 
     if (data) {
-      this.getAllMovements(finalGroupId || undefined).then(allMoves => {
-        googleCalendarService.syncAllMovements(userId, allMoves, 12, finalGroupId || undefined).catch(err => {
+      this.getAllMovements(finalGroupId).then(allMoves => {
+        googleCalendarService.syncAllMovements(userId, allMoves, 12, finalGroupId).catch(err => {
           console.warn('Google Calendar sync background error:', err)
         })
       })
@@ -352,9 +369,9 @@ export const financialService = {
   async updateMovement(
     id: string,
     movement: Partial<Omit<FinancialMovement, 'id' | 'created_at' | 'user_id'>>,
-    groupId?: string
+    groupId?: string | null
   ): Promise<FinancialMovement> {
-    const finalGroupId = movement.group_id || groupId
+    const finalGroupId = (movement.group_id || groupId) || undefined
 
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
@@ -362,20 +379,25 @@ export const financialService = {
       if (idx === -1) {
         throw new Error('Movimentação local não encontrada.')
       }
+      
+      // Preserve group_id if not explicitly updating
+      const targetGroupId = finalGroupId !== undefined ? finalGroupId : all[idx].group_id
       const updated: FinancialMovement = {
         ...all[idx],
         ...movement,
-        group_id: finalGroupId !== undefined ? finalGroupId : all[idx].group_id,
+        group_id: targetGroupId,
         amount: movement.amount !== undefined ? Number(movement.amount) : all[idx].amount
       }
       all[idx] = updated
       saveLocalMovements(all)
 
-      this.getAllMovements(finalGroupId || undefined).then(allMoves => {
-        googleCalendarService.syncAllMovements('local-user-id', allMoves, 12, finalGroupId || undefined).catch(err => {
-          console.warn('Google Calendar sync background error:', err)
+      if (targetGroupId) {
+        this.getAllMovements(targetGroupId).then(allMoves => {
+          googleCalendarService.syncAllMovements('local-user-id', allMoves, 12, targetGroupId).catch(err => {
+            console.warn('Google Calendar sync background error:', err)
+          })
         })
-      })
+      }
 
       return updated
     }
@@ -384,15 +406,21 @@ export const financialService = {
     const userId = await getUserId()
 
     if (movement.debt_person_id) {
-      const { data: personCheck } = await supabase
+      const personCheckQuery = supabase
         .from('debt_persons')
         .select('id, name')
         .eq('id', movement.debt_person_id)
-        .eq('user_id', userId)
-        .maybeSingle()
+
+      if (finalGroupId && getHasGroupIdColumn() !== false) {
+        personCheckQuery.eq('group_id', finalGroupId)
+      } else {
+        personCheckQuery.eq('user_id', userId)
+      }
+
+      const { data: personCheck } = await personCheckQuery.maybeSingle()
 
       if (!personCheck) {
-        throw new Error('A pessoa selecionada não foi encontrada.')
+        throw new Error('A pessoa selecionada não foi encontrada no grupo.')
       }
     }
 
@@ -436,9 +464,9 @@ export const financialService = {
       throw new Error(`Erro de persistência na nuvem ao tentar salvar alterações: ${error.message}`)
     }
 
-    if (data) {
-      this.getAllMovements(finalGroupId || undefined).then(allMoves => {
-        googleCalendarService.syncAllMovements(userId, allMoves, 12, finalGroupId || undefined).catch(err => {
+    if (data && finalGroupId) {
+      this.getAllMovements(finalGroupId).then(allMoves => {
+        googleCalendarService.syncAllMovements(userId, allMoves, 12, finalGroupId).catch(err => {
           console.warn('Google Calendar sync background error:', err)
         })
       })
@@ -447,10 +475,14 @@ export const financialService = {
     return data
   },
 
-  async deleteMovement(id: string, groupId?: string): Promise<void> {
+  async deleteMovement(id: string, groupId?: string | null): Promise<void> {
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
-      const filtered = all.filter(m => m.id !== id)
+      const filtered = all.filter(m => {
+        if (m.id !== id) return true
+        if (groupId && m.group_id && m.group_id !== groupId) return true
+        return false
+      })
       saveLocalMovements(filtered)
 
       googleCalendarService.deleteMovementFromCalendar('local-user-id', id).catch(err => {
@@ -499,19 +531,22 @@ export const financialService = {
   },
 
   async getMovementsByRange(startDate: string, endDate: string, groupId?: string): Promise<FinancialMovement[]> {
+    if (!groupId) {
+      return []
+    }
+
     if (isLocalFallbackActive()) {
       const all = getLocalMovements()
       return all.filter(m => {
         const dateMatch = m.date >= startDate && m.date <= endDate
         if (!dateMatch) return false
-        if (!groupId) return true
-        return m.group_id === groupId || (!m.group_id && groupId === 'group-pessoal-default')
+        return m.group_id === groupId
       })
     }
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     let query = supabase
       .from('financial_movements')

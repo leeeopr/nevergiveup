@@ -67,19 +67,37 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
   const [editingMovement, setEditingMovement] = useState<FinancialMovement | null>(null)
   const [savingCobranca, setSavingCobranca] = useState(false)
 
+  const activeGroupId = currentGroup?.id
+  const lastGroupIdRef = React.useRef<string | null>(null)
+
+  if (lastGroupIdRef.current !== activeGroupId) {
+    lastGroupIdRef.current = activeGroupId || null
+    if (persons.length > 0) {
+      setPersons([])
+    }
+  }
+
   // Load Data
   const loadData = useCallback(async () => {
+    if (!activeGroupId) {
+      setPersons([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
-      const data = await personalDebtsService.getPersonsWithDebts(currentGroup?.id)
-      setPersons(data)
+      const data = await personalDebtsService.getPersonsWithDebts(activeGroupId)
+      if (lastGroupIdRef.current === activeGroupId) {
+        setPersons(data)
 
-      // Refresh currently selected person if open in details
-      if (selectedPerson) {
-        const found = data.find(p => p.id === selectedPerson.id)
-        if (found) {
-          setSelectedPerson(found)
+        // Refresh currently selected person if open in details
+        if (selectedPerson) {
+          const found = data.find(p => p.id === selectedPerson.id)
+          if (found) {
+            setSelectedPerson(found)
+          }
         }
       }
     } catch (err: any) {
@@ -87,11 +105,11 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [selectedPerson, currentGroup?.id])
+  }, [selectedPerson, activeGroupId])
 
   useEffect(() => {
     loadData()
-  }, [loadData, currentGroup?.id])
+  }, [loadData, activeGroupId])
 
   // Calculate Global Metrics
   const metrics: GlobalDebtsMetrics = useMemo(() => {
@@ -126,13 +144,18 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
 
   // Person Handlers
   const handleSavePerson = async (payload: { name: string; phone?: string; notes?: string }) => {
+    if (!activeGroupId) {
+      alert('Selecione um grupo ativo para cadastrar pessoas.')
+      return
+    }
+
     if (editingPerson) {
       await personalDebtsService.updatePerson(editingPerson.id, payload)
     } else {
       await personalDebtsService.createPerson({
         ...payload,
-        group_id: currentGroup?.id || null
-      }, currentGroup?.id)
+        group_id: activeGroupId
+      }, activeGroupId)
     }
     await loadData()
   }
@@ -146,7 +169,7 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     if (!window.confirm(msg)) return
 
     try {
-      await personalDebtsService.deletePerson(person.id)
+      await personalDebtsService.deletePerson(person.id, activeGroupId)
       if (selectedPerson?.id === person.id) {
         setSelectedPerson(null)
       }
@@ -178,19 +201,24 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     due_date?: string | null
     notes?: string | null
   }) => {
+    if (!activeGroupId) {
+      alert('Selecione um grupo ativo para cadastrar obrigações.')
+      return
+    }
+
     if (editingDebt) {
-      await personalDebtsService.updateDebt(editingDebt.id, payload)
+      await personalDebtsService.updateDebt(editingDebt.id, payload, activeGroupId)
     } else {
       await personalDebtsService.createDebt({
         ...payload,
-        group_id: currentGroup?.id || null
-      }, currentGroup?.id)
+        group_id: activeGroupId
+      }, activeGroupId)
     }
     await loadData()
   }
 
   const handleDeleteDebt = async (debtId: string) => {
-    await personalDebtsService.deleteDebt(debtId)
+    await personalDebtsService.deleteDebt(debtId, activeGroupId)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }
@@ -213,10 +241,15 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
     notes?: string
     syncFinancialMovement: boolean
   }) => {
+    if (!activeGroupId) {
+      alert('Selecione um grupo ativo para registrar amortizações.')
+      return
+    }
+
     await personalDebtsService.registerPayment({
       ...payload,
-      group_id: currentGroup?.id || null
-    })
+      group_id: activeGroupId
+    }, activeGroupId)
     await loadData()
     if (payload.syncFinancialMovement && onMovementCreated) {
       onMovementCreated()
@@ -224,7 +257,7 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
   }
 
   const handleDeletePayment = async (paymentId: string, debtId: string) => {
-    await personalDebtsService.deletePayment(paymentId, debtId)
+    await personalDebtsService.deletePayment(paymentId, debtId, activeGroupId)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }
@@ -241,13 +274,13 @@ export function CobrancasTab({ onMovementCreated }: CobrancasTabProps) {
       ...mov,
       is_paid: nextPaid,
       paid_at: nextPaid ? new Date().toISOString() : undefined
-    }, currentGroup?.id)
+    }, activeGroupId)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }
 
   const handleDeleteMovement = async (movementId: string) => {
-    await financialService.deleteMovement(movementId, currentGroup?.id)
+    await financialService.deleteMovement(movementId, activeGroupId)
     await loadData()
     if (onMovementCreated) onMovementCreated()
   }

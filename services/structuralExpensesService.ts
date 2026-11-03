@@ -76,18 +76,19 @@ async function getUserId(): Promise<string> {
 
 export const structuralExpensesService = {
   async getExpenses(groupId?: string): Promise<StructuralExpense[]> {
+    if (!groupId) {
+      return []
+    }
+
     if (isLocalFallbackActive()) {
       return getLocalExpenses()
-        .filter(e => {
-          if (!groupId) return true
-          return e.group_id === groupId || (!e.group_id && groupId === 'group-pessoal-default')
-        })
+        .filter(e => e.group_id === groupId)
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
     }
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     let query = supabase
       .from('structural_expenses')
@@ -127,6 +128,10 @@ export const structuralExpensesService = {
   ): Promise<StructuralExpense> {
     const finalGroupId = expense.group_id || groupId || null
 
+    if (!finalGroupId) {
+      throw new Error('Não é possível criar custo fixo sem grupo: Selecione um grupo de gerenciamento ativo.')
+    }
+
     if (isLocalFallbackActive()) {
       const all = getLocalExpenses()
       const mockId = (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -149,7 +154,7 @@ export const structuralExpensesService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     const insertPayload: any = {
       title: expense.title,
@@ -158,10 +163,8 @@ export const structuralExpensesService = {
       recurrence: expense.recurrence,
       priority: expense.priority,
       description: expense.description,
-      user_id: userId
-    }
-    if (canUseGroupId) {
-      insertPayload.group_id = finalGroupId
+      user_id: userId,
+      group_id: finalGroupId
     }
 
     let { data, error } = await supabase
@@ -170,7 +173,7 @@ export const structuralExpensesService = {
       .select()
       .single()
 
-    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+    if (error && isMissingColumnError(error, 'group_id')) {
       console.warn('[structuralExpensesService] Supabase schema does not have group_id column. Retrying insert without group_id.')
       setHasGroupIdColumn(false)
       delete insertPayload.group_id

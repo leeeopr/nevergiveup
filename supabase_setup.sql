@@ -700,18 +700,22 @@ CREATE TABLE IF NOT EXISTS public.group_members (
     UNIQUE(group_id, user_id)
 );
 
-CREATE OR REPLACE FUNCTION public.user_has_group_access(target_group_id UUID, minimum_role TEXT DEFAULT 'viewer')
+CREATE OR REPLACE FUNCTION public.user_has_group_access(
+    target_group_id UUID,
+    check_user_id UUID,
+    minimum_role TEXT DEFAULT 'viewer'
+)
 RETURNS BOOLEAN AS $$
 DECLARE
-    current_uid UUID := auth.uid();
+    effective_uid UUID := COALESCE(check_user_id, auth.uid());
 BEGIN
-    IF current_uid IS NULL THEN
+    IF effective_uid IS NULL OR target_group_id IS NULL THEN
         RETURN FALSE;
     END IF;
 
     IF EXISTS (
         SELECT 1 FROM public.management_groups 
-        WHERE id = target_group_id AND owner_id = current_uid
+        WHERE id = target_group_id AND owner_id = effective_uid
     ) THEN
         RETURN TRUE;
     END IF;
@@ -719,23 +723,38 @@ BEGIN
     IF minimum_role = 'viewer' THEN
         RETURN EXISTS (
             SELECT 1 FROM public.group_members 
-            WHERE group_id = target_group_id AND user_id = current_uid
+            WHERE group_id = target_group_id 
+              AND user_id = effective_uid
         );
     ELSIF minimum_role = 'editor' THEN
         RETURN EXISTS (
             SELECT 1 FROM public.group_members 
-            WHERE group_id = target_group_id AND user_id = current_uid AND role IN ('admin', 'editor')
+            WHERE group_id = target_group_id 
+              AND user_id = effective_uid 
+              AND role::text IN ('admin', 'editor')
         );
     ELSIF minimum_role = 'admin' THEN
         RETURN EXISTS (
             SELECT 1 FROM public.group_members 
-            WHERE group_id = target_group_id AND user_id = current_uid AND role = 'admin'
+            WHERE group_id = target_group_id 
+              AND user_id = effective_uid 
+              AND role::text = 'admin'
         );
     END IF;
 
     RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.user_has_group_access(
+    target_group_id UUID,
+    minimum_role TEXT DEFAULT 'viewer'
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN public.user_has_group_access(target_group_id, auth.uid(), minimum_role);
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- Add group_id to all relevant tables
 ALTER TABLE public.financial_movements ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.management_groups(id) ON DELETE CASCADE;

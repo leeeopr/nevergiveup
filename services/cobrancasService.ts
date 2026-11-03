@@ -58,11 +58,9 @@ async function getUserId(): Promise<string> {
 }
 
 function getLocalChargesWithOccurrences(groupId?: string): Charge[] {
-  const charges = getLocalCharges().filter(c => {
-    if (!groupId) return true
-    return c.group_id === groupId || (!c.group_id && groupId === 'group-pessoal-default')
-  })
-  const occurrences = getLocalOccurrences()
+  if (!groupId) return []
+  const charges = getLocalCharges().filter(c => c.group_id === groupId)
+  const occurrences = getLocalOccurrences().filter(o => o.group_id === groupId || charges.some(c => c.id === o.charge_id))
 
   return charges.map(c => {
     const occs = occurrences
@@ -79,13 +77,11 @@ function getLocalChargesWithOccurrences(groupId?: string): Charge[] {
 }
 
 function getLocalOccurrencesByRange(startDate: string, endDate: string, groupId?: string): ChargeOccurrence[] {
-  const charges = getLocalCharges().filter(c => {
-    if (!groupId) return true
-    return c.group_id === groupId || (!c.group_id && groupId === 'group-pessoal-default')
-  })
-  const occurrences = getLocalOccurrences()
+  if (!groupId) return []
+  const charges = getLocalCharges().filter(c => c.group_id === groupId)
   const chargeMap = new Map<string, Charge>()
   charges.forEach(c => chargeMap.set(c.id, c))
+  const occurrences = getLocalOccurrences()
 
   return occurrences
     .filter(o => {
@@ -318,6 +314,10 @@ export const cobrancasService = {
    * Fetches all charges for the user along with their occurrences.
    */
   async getCharges(groupId?: string): Promise<Charge[]> {
+    if (!groupId) {
+      return []
+    }
+
     if (isLocalFallbackActive()) {
       return getLocalChargesWithOccurrences(groupId)
     }
@@ -330,12 +330,7 @@ export const cobrancasService = {
         .from('charges')
         .select('*')
         .order('created_at', { ascending: false })
-
-      if (groupId) {
-        chargesQuery = chargesQuery.eq('group_id', groupId)
-      } else {
-        chargesQuery = chargesQuery.eq('user_id', userId)
-      }
+        .eq('group_id', groupId)
 
       const { data: charges, error: chargesErr } = await chargesQuery
 
@@ -353,12 +348,7 @@ export const cobrancasService = {
         .select('*')
         .in('charge_id', chargeIds)
         .order('due_date', { ascending: true })
-
-      if (groupId) {
-        occQuery = occQuery.eq('group_id', groupId)
-      } else {
-        occQuery = occQuery.eq('user_id', userId)
-      }
+        .eq('group_id', groupId)
 
       const { data: occurrences, error: occErr } = await occQuery
 
@@ -406,8 +396,12 @@ export const cobrancasService = {
   }, groupId?: string): Promise<Charge> {
     const finalGroupId = payload.group_id || groupId || null
 
+    if (!finalGroupId) {
+      throw new Error('Não é possível criar cobrança sem grupo ativo: Selecione um grupo de gerenciamento.')
+    }
+
     if (isLocalFallbackActive()) {
-      return createLocalCharge({ ...payload, group_id: finalGroupId }, finalGroupId || undefined)
+      return createLocalCharge({ ...payload, group_id: finalGroupId }, finalGroupId)
     }
 
     try {
@@ -440,7 +434,7 @@ export const cobrancasService = {
 
       if (chargeErr || !charge) {
         console.warn('Supabase createCharge failed, using local fallback:', chargeErr?.message)
-        return createLocalCharge({ ...payload, group_id: finalGroupId }, finalGroupId || undefined)
+        return createLocalCharge({ ...payload, group_id: finalGroupId }, finalGroupId)
       }
 
       const occsToInsert = expectedOccs.map(exp => ({

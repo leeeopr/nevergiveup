@@ -35,8 +35,26 @@ export function EmpresaTab() {
   const [printReceipt, setPrintReceipt] = useState<Receipt | null>(null)
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
 
+  const activeGroupId = currentGroup?.id
+  const lastGroupIdRef = React.useRef<string | null>(null)
+
+  if (lastGroupIdRef.current !== activeGroupId) {
+    lastGroupIdRef.current = activeGroupId || null
+    if (clients.length > 0 || receipts.length > 0) {
+      setClients([])
+      setReceipts([])
+    }
+  }
+
   const loadData = useCallback(async () => {
     if (!user || !profile?.empresa_enabled) {
+      setLoading(false)
+      return
+    }
+
+    if (!activeGroupId) {
+      setClients([])
+      setReceipts([])
       setLoading(false)
       return
     }
@@ -44,22 +62,23 @@ export function EmpresaTab() {
     setLoading(true)
     try {
       const [fetchedClients, fetchedReceipts] = await Promise.all([
-        companyService.getClients(user.id, currentGroup?.id),
-        companyService.getReceipts(user.id, currentGroup?.id)
+        companyService.getClients(user.id, activeGroupId),
+        companyService.getReceipts(user.id, activeGroupId)
       ])
-      setClients(fetchedClients)
-      setReceipts(fetchedReceipts)
+      if (lastGroupIdRef.current === activeGroupId) {
+        setClients(fetchedClients)
+        setReceipts(fetchedReceipts)
+      }
     } catch (err) {
       console.warn('Error loading company data:', err)
     } finally {
       setLoading(false)
     }
-  }, [user, profile?.empresa_enabled, currentGroup?.id])
+  }, [user, profile?.empresa_enabled, activeGroupId])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
-  }, [loadData])
+  }, [loadData, activeGroupId])
 
   // Client actions
   const handleAddClient = () => {

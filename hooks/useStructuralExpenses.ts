@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { structuralExpensesService } from '@/services/structuralExpensesService'
 import { StructuralExpense } from '@/types/structural'
 import { useAuth } from '@/context/AuthContext'
@@ -9,27 +9,44 @@ export function useStructuralExpenses() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const { user, loading: authLoading } = useAuth()
-  const { currentGroup } = useGroup()
+  const { currentGroup, loading: groupLoading } = useGroup()
+  const activeGroupId = currentGroup?.id
+
+  // Track group change synchronously to prevent cross-group flashing
+  const lastGroupIdRef = useRef<string | null>(null)
+  if (lastGroupIdRef.current !== activeGroupId) {
+    lastGroupIdRef.current = activeGroupId || null
+    if (expenses.length > 0) {
+      setExpenses([])
+    }
+  }
 
   const refresh = useCallback(async () => {
+    if (!user || !activeGroupId) {
+      setExpenses([])
+      setLoading(groupLoading)
+      return
+    }
+
     try {
       setLoading(true)
-      const data = await structuralExpensesService.getExpenses(currentGroup?.id)
-      setExpenses(data)
-      setError(null)
+      const data = await structuralExpensesService.getExpenses(activeGroupId)
+      if (lastGroupIdRef.current === activeGroupId) {
+        setExpenses(data)
+        setError(null)
+      }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Falha ao carregar despesas estruturais'))
     } finally {
       setLoading(false)
     }
-  }, [currentGroup?.id])
+  }, [user, activeGroupId, groupLoading])
 
   useEffect(() => {
-    if (!authLoading) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!authLoading && !groupLoading) {
       refresh()
     }
-  }, [refresh, authLoading])
+  }, [refresh, authLoading, groupLoading])
 
   const stats = useMemo(() => {
     // Sum all structural costs
@@ -47,22 +64,25 @@ export function useStructuralExpenses() {
   }, [expenses])
 
   const addExpense = async (expense: Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
+    if (!activeGroupId) {
+      throw new Error('Nenhum grupo ativo selecionado.')
+    }
     const newItem = await structuralExpensesService.createExpense({
       ...expense,
-      group_id: expense.group_id || currentGroup?.id || null
-    }, currentGroup?.id)
+      group_id: activeGroupId
+    }, activeGroupId)
     setExpenses(prev => [newItem, ...prev])
     return newItem
   }
 
   const updateExpense = async (id: string, updates: Partial<Omit<StructuralExpense, 'id' | 'created_at' | 'updated_at' | 'user_id'>>) => {
-    const updatedItem = await structuralExpensesService.updateExpense(id, updates)
+    const updatedItem = await structuralExpensesService.updateExpense(id, updates, activeGroupId)
     setExpenses(prev => prev.map(item => item.id === id ? updatedItem : item))
     return updatedItem
   }
 
   const deleteExpense = async (id: string) => {
-    await structuralExpensesService.deleteExpense(id)
+    await structuralExpensesService.deleteExpense(id, activeGroupId)
     setExpenses(prev => prev.filter(item => item.id !== id))
   }
 

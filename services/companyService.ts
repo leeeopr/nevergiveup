@@ -39,14 +39,11 @@ function saveLocalReceipts(userId: string, receipts: Receipt[]): void {
 export const companyService = {
   // CLIENTS CRUD
   async getClients(userId: string, groupId?: string): Promise<Client[]> {
-    if (!userId) return []
+    if (!userId || !groupId) return []
     const local = getLocalClients(userId)
 
     if (isLocalFallbackActive() || userId === 'local-user-id') {
-      return local.filter(c => {
-        if (!groupId) return true
-        return c.group_id === groupId || (!c.group_id && groupId === 'group-pessoal-default')
-      })
+      return local.filter(c => c.group_id === groupId)
     }
 
     try {
@@ -55,18 +52,13 @@ export const companyService = {
         .from('clients')
         .select('*')
         .order('name', { ascending: true })
-
-      if (groupId) {
-        query = query.eq('group_id', groupId)
-      } else {
-        query = query.eq('user_id', userId)
-      }
+        .eq('group_id', groupId)
 
       const { data, error } = await query
 
       if (error) {
         console.error('[CompanyService] Error fetching clients from Supabase:', error.message)
-        return local.filter(c => !groupId || c.group_id === groupId)
+        return local.filter(c => c.group_id === groupId)
       }
 
       const clients = (data || []) as Client[]
@@ -74,7 +66,7 @@ export const companyService = {
       return clients
     } catch (err) {
       console.error('[CompanyService] Exception fetching clients:', err)
-      return local.filter(c => !groupId || c.group_id === groupId)
+      return local.filter(c => c.group_id === groupId)
     }
   },
 
@@ -283,14 +275,11 @@ export const companyService = {
 
   // RECEIPTS CRUD
   async getReceipts(userId: string, groupId?: string): Promise<Receipt[]> {
-    if (!userId) return []
+    if (!userId || !groupId) return []
     const local = getLocalReceipts(userId)
 
     if (isLocalFallbackActive() || userId === 'local-user-id') {
-      return local.filter(r => {
-        if (!groupId) return true
-        return r.group_id === groupId || (!r.group_id && groupId === 'group-pessoal-default')
-      })
+      return local.filter(r => r.group_id === groupId)
     }
 
     try {
@@ -299,18 +288,13 @@ export const companyService = {
         .from('receipts')
         .select('*')
         .order('issue_date', { ascending: false })
-
-      if (groupId) {
-        query = query.eq('group_id', groupId)
-      } else {
-        query = query.eq('user_id', userId)
-      }
+        .eq('group_id', groupId)
 
       const { data, error } = await query
 
       if (error) {
         console.error('[CompanyService] Error fetching receipts from Supabase:', error.message)
-        return local.filter(r => !groupId || r.group_id === groupId)
+        return local.filter(r => r.group_id === groupId)
       }
 
       const receipts = (data || []) as Receipt[]
@@ -318,13 +302,17 @@ export const companyService = {
       return receipts
     } catch (err) {
       console.error('[CompanyService] Exception fetching receipts:', err)
-      return local.filter(r => !groupId || r.group_id === groupId)
+      return local.filter(r => r.group_id === groupId)
     }
   },
 
   async createReceipt(userId: string, receiptData: Partial<Receipt>, groupId?: string): Promise<Receipt> {
     const isLocalUser = isLocalFallbackActive() || userId === 'local-user-id' || !userId
     const finalGroupId = receiptData.group_id || groupId || null
+
+    if (!finalGroupId) {
+      throw new Error('Não é possível emitir recibo sem grupo ativo: Selecione um grupo de gerenciamento.')
+    }
 
     const localReceipts = getLocalReceipts(userId)
     const count = localReceipts.length + 1

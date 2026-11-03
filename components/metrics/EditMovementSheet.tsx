@@ -28,7 +28,7 @@ export function EditMovementSheet({ movement, onClose, onSuccess }: EditMovement
     if (!movement || !canDelete) return
     try {
       setDeleting(true)
-      await financialService.deleteMovement(movement.id)
+      await financialService.deleteMovement(movement.id, movement.group_id || undefined)
       onSuccess()
       onClose()
     } catch (error) {

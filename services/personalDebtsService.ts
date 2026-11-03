@@ -151,18 +151,19 @@ function ensureLocalSeed() {
 
 export const personalDebtsService = {
   async getPersons(groupId?: string): Promise<DebtPerson[]> {
+    if (!groupId) {
+      return []
+    }
+
     if (isLocalFallbackActive()) {
       ensureLocalSeed()
       return getStoredPersons()
-        .filter(p => {
-          if (!groupId) return true
-          return p.group_id === groupId || (!p.group_id && groupId === 'group-pessoal-default')
-        })
+        .filter(p => p.group_id === groupId)
         .sort((a, b) => a.name.localeCompare(b.name))
     }
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     let query = supabase
       .from('debt_persons')
@@ -193,27 +194,25 @@ export const personalDebtsService = {
       console.warn('Erro ao carregar pessoas do Supabase, recorrendo ao cache local:', error)
       ensureLocalSeed()
       return getStoredPersons()
-        .filter(p => {
-          if (!groupId) return true
-          return p.group_id === groupId || (!p.group_id && groupId === 'group-pessoal-default')
-        })
+        .filter(p => p.group_id === groupId)
         .sort((a, b) => a.name.localeCompare(b.name))
     }
     return data || []
   },
 
   async getPersonsWithDebts(groupId?: string): Promise<PersonWithDebts[]> {
+    if (!groupId) {
+      return []
+    }
+
     const todayStr = format(new Date(), 'yyyy-MM-dd')
 
     if (isLocalFallbackActive()) {
       ensureLocalSeed()
       const allPersons = getStoredPersons()
-      const persons = allPersons.filter(p => {
-        if (!groupId) return true
-        return p.group_id === groupId || (!p.group_id && groupId === 'group-pessoal-default')
-      })
-      const debts = getStoredDebts()
-      const payments = getStoredPayments()
+      const persons = allPersons.filter(p => p.group_id === groupId)
+      const debts = getStoredDebts().filter(d => d.group_id === groupId)
+      const payments = getStoredPayments().filter(p => p.group_id === groupId)
       const allMovements = await financialService.getAllMovements(groupId)
       const cobrancaMovements = allMovements.filter(m => m.type === 'cobranca')
 
@@ -286,7 +285,7 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(groupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     const executeQueries = async (useGroup: boolean) => {
       let personsQuery = supabase.from('debt_persons').select('*').order('name', { ascending: true })
@@ -403,7 +402,7 @@ export const personalDebtsService = {
     } catch (err) {
       console.warn('Erro ao carregar dados do Supabase para Cobranças, recorrendo ao cache local:', err)
       ensureLocalSeed()
-      return this.getPersonsWithDebts()
+      return this.getPersonsWithDebts(groupId)
     }
   },
 
@@ -414,6 +413,10 @@ export const personalDebtsService = {
     const trimmedName = payload.name.trim()
     if (!trimmedName) throw new Error('O nome completo da pessoa é obrigatório.')
     const finalGroupId = payload.group_id || groupId || null
+
+    if (!finalGroupId) {
+      throw new Error('Não é possível cadastrar pessoa sem grupo ativo: Selecione um grupo de gerenciamento.')
+    }
 
     if (isLocalFallbackActive()) {
       const persons = getStoredPersons()
@@ -434,16 +437,14 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     const insertPayload: any = {
       user_id: userId,
       name: trimmedName,
       phone: payload.phone?.trim() || null,
-      notes: payload.notes?.trim() || null
-    }
-    if (canUseGroupId) {
-      insertPayload.group_id = finalGroupId
+      notes: payload.notes?.trim() || null,
+      group_id: finalGroupId
     }
 
     let { data, error } = await supabase
@@ -452,7 +453,7 @@ export const personalDebtsService = {
       .select()
       .single()
 
-    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+    if (error && isMissingColumnError(error, 'group_id')) {
       setHasGroupIdColumn(false)
       delete insertPayload.group_id
       const retry = await supabase
@@ -519,7 +520,7 @@ export const personalDebtsService = {
     return data
   },
 
-  async deletePerson(id: string): Promise<void> {
+  async deletePerson(id: string, groupId?: string): Promise<void> {
     if (isLocalFallbackActive()) {
       const persons = getStoredPersons().filter(p => p.id !== id)
       const debtsToDelete = getStoredDebts().filter(d => d.person_id === id)
@@ -529,7 +530,7 @@ export const personalDebtsService = {
       const payments = getStoredPayments()
       for (const p of payments) {
         if (debtIds.has(p.debt_id) && p.financial_movement_id) {
-          financialService.deleteMovement(p.financial_movement_id).catch(() => {})
+          financialService.deleteMovement(p.financial_movement_id, groupId).catch(() => {})
         }
       }
 
@@ -552,24 +553,39 @@ export const personalDebtsService = {
     await financialService.decouplePersonFromMovements(id)
 
     // Find debts and payments to clean linked movements
-    const { data: debts } = await supabase.from('debts').select('id').eq('person_id', id).eq('user_id', userId)
+    let debtsQuery = supabase.from('debts').select('id').eq('person_id', id).eq('user_id', userId)
+    if (groupId && getHasGroupIdColumn() !== false) {
+      debtsQuery = debtsQuery.eq('group_id', groupId)
+    }
+    const { data: debts } = await debtsQuery
+
     if (debts && debts.length > 0) {
       const dIds = debts.map(d => d.id)
-      const { data: payments } = await supabase.from('debt_payments').select('financial_movement_id').in('debt_id', dIds)
+      let paymentsQuery = supabase.from('debt_payments').select('financial_movement_id').in('debt_id', dIds)
+      if (groupId && getHasGroupIdColumn() !== false) {
+        paymentsQuery = paymentsQuery.eq('group_id', groupId)
+      }
+      const { data: payments } = await paymentsQuery
       if (payments) {
         for (const p of payments) {
           if (p.financial_movement_id) {
-            financialService.deleteMovement(p.financial_movement_id).catch(() => {})
+            financialService.deleteMovement(p.financial_movement_id, groupId).catch(() => {})
           }
         }
       }
     }
 
-    const { error } = await supabase
+    let delQuery = supabase
       .from('debt_persons')
       .delete()
       .eq('id', id)
       .eq('user_id', userId)
+
+    if (groupId && getHasGroupIdColumn() !== false) {
+      delQuery = delQuery.eq('group_id', groupId)
+    }
+
+    const { error } = await delQuery
 
     if (error) {
       throw new Error(`Erro ao excluir pessoa: ${error.message}`)
@@ -592,6 +608,10 @@ export const personalDebtsService = {
     if (!trimmedDesc) throw new Error('A descrição da dívida é obrigatória.')
     if (payload.amount <= 0) throw new Error('O valor da obrigação deve ser maior que zero.')
     const finalGroupId = payload.group_id || groupId || null
+
+    if (!finalGroupId) {
+      throw new Error('Não é possível criar dívida sem grupo ativo: Selecione um grupo de gerenciamento.')
+    }
 
     if (isLocalFallbackActive()) {
       const debts = getStoredDebts()
@@ -619,7 +639,7 @@ export const personalDebtsService = {
 
     const supabase = getSupabase()
     const userId = await getUserId()
-    const canUseGroupId = Boolean(finalGroupId && getHasGroupIdColumn() !== false)
+    const canUseGroupId = getHasGroupIdColumn() !== false
 
     const insertPayload: any = {
       user_id: userId,
@@ -629,10 +649,8 @@ export const personalDebtsService = {
       amount: Number(payload.amount),
       due_date: payload.due_date || null,
       notes: payload.notes?.trim() || null,
-      status: 'pending'
-    }
-    if (canUseGroupId) {
-      insertPayload.group_id = finalGroupId
+      status: 'pending',
+      group_id: finalGroupId
     }
 
     let { data, error } = await supabase
@@ -641,7 +659,7 @@ export const personalDebtsService = {
       .select()
       .single()
 
-    if (error && isMissingColumnError(error, 'group_id') && insertPayload.group_id) {
+    if (error && isMissingColumnError(error, 'group_id')) {
       setHasGroupIdColumn(false)
       delete insertPayload.group_id
       const retry = await supabase
@@ -665,13 +683,17 @@ export const personalDebtsService = {
     }
   },
 
-  async updateDebt(id: string, payload: {
-    description?: string
-    amount?: number
-    due_date?: string | null
-    notes?: string | null
-    type?: DebtDirection
-  }): Promise<Debt> {
+  async updateDebt(
+    id: string,
+    payload: {
+      description?: string
+      amount?: number
+      due_date?: string | null
+      notes?: string | null
+      type?: DebtDirection
+    },
+    groupId?: string
+  ): Promise<Debt> {
     if (isLocalFallbackActive()) {
       const debts = getStoredDebts()
       const idx = debts.findIndex(d => d.id === id)
@@ -708,7 +730,11 @@ export const personalDebtsService = {
     const userId = await getUserId()
 
     // Validate against current payments
-    const { data: payments } = await supabase.from('debt_payments').select('amount').eq('debt_id', id)
+    let paymentsQuery = supabase.from('debt_payments').select('amount').eq('debt_id', id)
+    if (groupId && getHasGroupIdColumn() !== false) {
+      paymentsQuery = paymentsQuery.eq('group_id', groupId)
+    }
+    const { data: payments } = await paymentsQuery
     const totalPaid = (payments || []).reduce((acc, p) => acc + Number(p.amount), 0)
 
     if (payload.amount !== undefined && payload.amount < totalPaid - 0.001) {
@@ -726,11 +752,17 @@ export const personalDebtsService = {
     if (payload.due_date !== undefined) updateFields.due_date = payload.due_date
     if (payload.notes !== undefined) updateFields.notes = payload.notes
 
-    const { data, error } = await supabase
+    let updateQuery = supabase
       .from('debts')
       .update(updateFields)
       .eq('id', id)
       .eq('user_id', userId)
+
+    if (groupId && getHasGroupIdColumn() !== false) {
+      updateQuery = updateQuery.eq('group_id', groupId)
+    }
+
+    const { data, error } = await updateQuery
       .select()
       .single()
 
@@ -743,7 +775,7 @@ export const personalDebtsService = {
     }
   },
 
-  async deleteDebt(id: string): Promise<void> {
+  async deleteDebt(id: string, groupId?: string): Promise<void> {
     if (isLocalFallbackActive()) {
       const debts = getStoredDebts().filter(d => d.id !== id)
       const payments = getStoredPayments()
@@ -751,7 +783,7 @@ export const personalDebtsService = {
       // Remove any financial movements created by payments of this debt
       for (const p of payments) {
         if (p.debt_id === id && p.financial_movement_id) {
-          financialService.deleteMovement(p.financial_movement_id).catch(() => {})
+          financialService.deleteMovement(p.financial_movement_id, groupId).catch(() => {})
         }
       }
 
@@ -764,20 +796,30 @@ export const personalDebtsService = {
     const supabase = getSupabase()
     const userId = await getUserId()
 
-    const { data: payments } = await supabase.from('debt_payments').select('financial_movement_id').eq('debt_id', id)
+    let paymentsQuery = supabase.from('debt_payments').select('financial_movement_id').eq('debt_id', id)
+    if (groupId && getHasGroupIdColumn() !== false) {
+      paymentsQuery = paymentsQuery.eq('group_id', groupId)
+    }
+    const { data: payments } = await paymentsQuery
     if (payments) {
       for (const p of payments) {
         if (p.financial_movement_id) {
-          financialService.deleteMovement(p.financial_movement_id).catch(() => {})
+          financialService.deleteMovement(p.financial_movement_id, groupId).catch(() => {})
         }
       }
     }
 
-    const { error } = await supabase
+    let delQuery = supabase
       .from('debts')
       .delete()
       .eq('id', id)
       .eq('user_id', userId)
+
+    if (groupId && getHasGroupIdColumn() !== false) {
+      delQuery = delQuery.eq('group_id', groupId)
+    }
+
+    const { error } = await delQuery
 
     if (error) {
       throw new Error(`Falha ao excluir dívida: ${error.message}`)
@@ -803,6 +845,10 @@ export const personalDebtsService = {
     }
     const finalGroupId = payload.group_id || groupId || null
 
+    if (!finalGroupId) {
+      throw new Error('Não é possível registrar pagamento sem grupo ativo: Selecione um grupo de gerenciamento.')
+    }
+
     let linkedMovementId: string | null = null
 
     // If requested, synchronize with the main financial movements
@@ -819,7 +865,7 @@ export const personalDebtsService = {
           tag: isReceiving ? 'Cobrança' : 'Dívida',
           is_recurring: false,
           group_id: finalGroupId
-        }, finalGroupId || undefined)
+        }, finalGroupId)
         linkedMovementId = newMovement.id
       } catch (err: any) {
         console.warn('Não foi possível gerar movimentação financeira automática:', err)
@@ -938,12 +984,12 @@ export const personalDebtsService = {
     }
   },
 
-  async deletePayment(paymentId: string, debtId: string): Promise<void> {
+  async deletePayment(paymentId: string, debtId: string, groupId?: string): Promise<void> {
     if (isLocalFallbackActive()) {
       const payments = getStoredPayments()
       const payment = payments.find(p => p.id === paymentId)
       if (payment?.financial_movement_id) {
-        financialService.deleteMovement(payment.financial_movement_id).catch(() => {})
+        financialService.deleteMovement(payment.financial_movement_id, groupId).catch(() => {})
       }
 
       const filtered = payments.filter(p => p.id !== paymentId)
@@ -966,36 +1012,66 @@ export const personalDebtsService = {
     const supabase = getSupabase()
     const userId = await getUserId()
 
-    const { data: payment } = await supabase
+    let paymentQuery = supabase
       .from('debt_payments')
       .select('financial_movement_id')
       .eq('id', paymentId)
       .eq('user_id', userId)
-      .single()
 
-    if (payment?.financial_movement_id) {
-      financialService.deleteMovement(payment.financial_movement_id).catch(() => {})
+    if (groupId && getHasGroupIdColumn() !== false) {
+      paymentQuery = paymentQuery.eq('group_id', groupId)
     }
 
-    const { error } = await supabase
+    const { data: payment } = await paymentQuery.maybeSingle()
+
+    if (payment?.financial_movement_id) {
+      financialService.deleteMovement(payment.financial_movement_id, groupId).catch(() => {})
+    }
+
+    let delQuery = supabase
       .from('debt_payments')
       .delete()
       .eq('id', paymentId)
-      .eq('user_id', userId)
+
+    if (groupId && getHasGroupIdColumn() !== false) {
+      delQuery = delQuery.eq('group_id', groupId)
+    } else {
+      delQuery = delQuery.eq('user_id', userId)
+    }
+
+    const { error } = await delQuery
 
     if (error) {
       throw new Error(`Erro ao excluir pagamento: ${error.message}`)
     }
 
     // Recalculate debt status
-    const { data: remainingPayments } = await supabase.from('debt_payments').select('amount').eq('debt_id', debtId)
-    const { data: debt } = await supabase.from('debts').select('amount').eq('id', debtId).single()
+    let remainingPaymentsQuery = supabase.from('debt_payments').select('amount').eq('debt_id', debtId)
+    if (groupId && getHasGroupIdColumn() !== false) {
+      remainingPaymentsQuery = remainingPaymentsQuery.eq('group_id', groupId)
+    }
+    const { data: remainingPayments } = await remainingPaymentsQuery
+
+    let debtQuery = supabase.from('debts').select('amount').eq('id', debtId)
+    if (groupId && getHasGroupIdColumn() !== false) {
+      debtQuery = debtQuery.eq('group_id', groupId)
+    } else {
+      debtQuery = debtQuery.eq('user_id', userId)
+    }
+    const { data: debt } = await debtQuery.maybeSingle()
     
     if (debt) {
       const totalPaid = (remainingPayments || []).reduce((acc, p) => acc + Number(p.amount), 0)
       const remaining = Math.max(0, Number(debt.amount) - totalPaid)
       const newStatus = remaining <= 0.009 ? 'paid' : (totalPaid > 0 ? 'partially_paid' : 'pending')
-      await supabase.from('debts').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', debtId)
+      
+      let updateDebtQuery = supabase.from('debts').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', debtId)
+      if (groupId && getHasGroupIdColumn() !== false) {
+        updateDebtQuery = updateDebtQuery.eq('group_id', groupId)
+      } else {
+        updateDebtQuery = updateDebtQuery.eq('user_id', userId)
+      }
+      await updateDebtQuery
     }
   },
 

@@ -77,9 +77,10 @@ export function MovementHistoryTable({ movements, onEdit, onRefresh }: MovementH
 
   const handleDelete = async (id: string) => {
     if (!canDelete) return
+    const targetMove = movements.find(m => m.id === id)
     try {
       setDeleting(true)
-      await financialService.deleteMovement(id)
+      await financialService.deleteMovement(id, targetMove?.group_id)
       setDeleteConfirmId(null)
       if (onRefresh) onRefresh()
     } catch (err) {
@@ -94,11 +95,15 @@ export function MovementHistoryTable({ movements, onEdit, onRefresh }: MovementH
     if (move.type === 'cobranca') {
       try {
         const updatedStatus = !move.is_paid
-        await financialService.updateMovement(move.id, {
-          ...move,
-          is_paid: updatedStatus,
-          paid_at: updatedStatus ? new Date().toISOString() : undefined
-        })
+        await financialService.updateMovement(
+          move.id,
+          {
+            ...move,
+            is_paid: updatedStatus,
+            paid_at: updatedStatus ? new Date().toISOString() : undefined
+          },
+          move.group_id || undefined
+        )
         if (onRefresh) onRefresh()
       } catch (err) {
         console.error('Failed to toggle status:', err)

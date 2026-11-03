@@ -38,20 +38,24 @@ CREATE TABLE IF NOT EXISTS public.group_members (
     UNIQUE(group_id, user_id)
 );
 
--- 3. Group Access Security Function
-CREATE OR REPLACE FUNCTION public.user_has_group_access(target_group_id UUID, minimum_role TEXT DEFAULT 'viewer')
+-- 3. Group Access Security Function (Both 3-parameter and 2-parameter overloads)
+CREATE OR REPLACE FUNCTION public.user_has_group_access(
+    target_group_id UUID,
+    check_user_id UUID,
+    minimum_role TEXT DEFAULT 'viewer'
+)
 RETURNS BOOLEAN AS $$
 DECLARE
-    current_uid UUID := auth.uid();
+    effective_uid UUID := COALESCE(check_user_id, auth.uid());
 BEGIN
-    IF current_uid IS NULL THEN
+    IF effective_uid IS NULL OR target_group_id IS NULL THEN
         RETURN FALSE;
     END IF;
 
     -- Owner has unrestricted access
     IF EXISTS (
         SELECT 1 FROM public.management_groups 
-        WHERE id = target_group_id AND owner_id = current_uid
+        WHERE id = target_group_id AND owner_id = effective_uid
     ) THEN
         RETURN TRUE;
     END IF;
@@ -60,23 +64,38 @@ BEGIN
     IF minimum_role = 'viewer' THEN
         RETURN EXISTS (
             SELECT 1 FROM public.group_members 
-            WHERE group_id = target_group_id AND user_id = current_uid
+            WHERE group_id = target_group_id 
+              AND user_id = effective_uid
         );
     ELSIF minimum_role = 'editor' THEN
         RETURN EXISTS (
             SELECT 1 FROM public.group_members 
-            WHERE group_id = target_group_id AND user_id = current_uid AND role IN ('admin', 'editor')
+            WHERE group_id = target_group_id 
+              AND user_id = effective_uid 
+              AND role::text IN ('admin', 'editor')
         );
     ELSIF minimum_role = 'admin' THEN
         RETURN EXISTS (
             SELECT 1 FROM public.group_members 
-            WHERE group_id = target_group_id AND user_id = current_uid AND role = 'admin'
+            WHERE group_id = target_group_id 
+              AND user_id = effective_uid 
+              AND role::text = 'admin'
         );
     END IF;
 
     RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.user_has_group_access(
+    target_group_id UUID,
+    minimum_role TEXT DEFAULT 'viewer'
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN public.user_has_group_access(target_group_id, auth.uid(), minimum_role);
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- 4. Add group_id Column to All Financial & Related Entities
 DO $$ 
@@ -401,42 +420,39 @@ USING (
     OR public.check_is_group_admin(group_id, auth.uid())
 );
 
--- 9. Update RLS on Financial Tables to Enforce Group Isolation
+-- 9. Update RLS on Financial Tables to Enforce Strict Group Isolation
 -- 9.1 Financial Movements
 DROP POLICY IF EXISTS "Users can view their own financial data" ON public.financial_movements;
 CREATE POLICY "Users can view their own financial data" 
 ON public.financial_movements FOR SELECT 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'viewer'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'viewer')
 );
 
 DROP POLICY IF EXISTS "Users can insert their own financial data" ON public.financial_movements;
 CREATE POLICY "Users can insert their own financial data" 
 ON public.financial_movements FOR INSERT 
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users can update their own financial data" ON public.financial_movements;
 CREATE POLICY "Users can update their own financial data" 
 ON public.financial_movements FOR UPDATE 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users can delete their own financial data" ON public.financial_movements;
 CREATE POLICY "Users can delete their own financial data" 
 ON public.financial_movements FOR DELETE 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 );
 
 -- 9.2 Structural Expenses
@@ -444,32 +460,33 @@ DROP POLICY IF EXISTS "Users can view their own structural expenses" ON public.s
 CREATE POLICY "Users can view their own structural expenses" 
 ON public.structural_expenses FOR SELECT 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'viewer'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'viewer')
 );
 
 DROP POLICY IF EXISTS "Users can insert their own structural expenses" ON public.structural_expenses;
 CREATE POLICY "Users can insert their own structural expenses" 
 ON public.structural_expenses FOR INSERT 
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users can update their own structural expenses" ON public.structural_expenses;
 CREATE POLICY "Users can update their own structural expenses" 
 ON public.structural_expenses FOR UPDATE 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
+)
+WITH CHECK (
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users can delete their own structural expenses" ON public.structural_expenses;
 CREATE POLICY "Users can delete their own structural expenses" 
 ON public.structural_expenses FOR DELETE 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 );
 
 -- 9.3 Debt Persons & Debts
@@ -477,36 +494,36 @@ DROP POLICY IF EXISTS "Users manage their own debt persons" ON public.debt_perso
 CREATE POLICY "Users manage their own debt persons" 
 ON public.debt_persons FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users manage their own debts" ON public.debts;
 CREATE POLICY "Users manage their own debts" 
 ON public.debts FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users manage their own debt payments" ON public.debt_payments;
 CREATE POLICY "Users manage their own debt payments" 
 ON public.debt_payments FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 -- 9.4 Clients, Charges & Receipts
@@ -514,48 +531,48 @@ DROP POLICY IF EXISTS "Users manage their own clients" ON public.clients;
 CREATE POLICY "Users manage their own clients" 
 ON public.clients FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users manage their own charges" ON public.charges;
 CREATE POLICY "Users manage their own charges" 
 ON public.charges FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users manage their own charge occurrences" ON public.charge_occurrences;
 CREATE POLICY "Users manage their own charge occurrences" 
 ON public.charge_occurrences FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 DROP POLICY IF EXISTS "Users manage their own receipts" ON public.receipts;
 CREATE POLICY "Users manage their own receipts" 
 ON public.receipts FOR ALL 
 USING (
-    (auth.uid() = user_id) 
-    OR (group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL AND public.user_has_group_access(group_id, 'editor')
 )
 WITH CHECK (
-    (auth.uid() = user_id) 
-    AND (group_id IS NULL OR public.user_has_group_access(group_id, 'editor'))
+    group_id IS NOT NULL 
+    AND (auth.uid() = user_id)
+    AND public.user_has_group_access(group_id, 'editor')
 );
 
 -- 10. Automatic Group Creation Trigger on New User Signup
